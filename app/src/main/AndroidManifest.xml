@@ -12,7 +12,7 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.Yakyeon">
         <activity
-            android:name=".MainActivity"
+            android:name=".ui.auth.LoginActivity"
             android:exported="true"
             android:windowSoftInputMode="adjustResize">
             <intent-filter>
@@ -21,6 +21,33 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <activity
+            android:name=".ui.auth.SignupTypeActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
+        <activity
+            android:name=".ui.auth.SignupFormActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
+        <activity
+            android:name=".MainActivity"
+            android:exported="false" />
+        <activity
+            android:name=".ui.medication.MedicationListActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
+        <activity
+            android:name=".ui.medication.MedicationScheduleActivity"
+            android:exported="false" />
+        <activity
+            android:name=".ui.medication.PrescriptionOcrActivity"
+            android:exported="false" />
+        <activity
+            android:name=".ui.dur.DurInteractionListActivity"
+            android:exported="false" />
+        <activity
+            android:name=".ui.dur.DurInteractionDetailActivity"
+            android:exported="false" />
     </application>
 
 </manifest>

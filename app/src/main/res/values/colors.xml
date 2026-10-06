@@ -2,4 +2,30 @@
 <resources>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
+    <color name="brand">#FF37A98A</color>
+    <color name="brand_dark">#FF247C68</color>
+    <color name="ink">#FF17332C</color>
+    <color name="muted">#FF6C827C</color>
+    <color name="hint">#FF9AACA7</color>
+    <color name="line">#FFDCEAE5</color>
+    <color name="line_soft">#FFE5EBE8</color>
+    <color name="mint">#FFEAF8F3</color>
+    <color name="mint_soft">#FFF4FBF8</color>
+    <color name="status_ok">#FF269768</color>
+    <color name="status_ok_bg">#FFEAF8F1</color>
+    <color name="warning_bg">#FFF7FBF9</color>
+    <color name="warning_line">#FFD7ECE4</color>
+    <color name="warning_title">#FF12735E</color>
+    <color name="warning_body">#FF338073</color>
+    <color name="divider">#FFF0F5F3</color>
+    <color name="nav_inactive">#FF8C9491</color>
+    <color name="nav_active">#FF12735E</color>
+    <color name="ended_icon_bg">#FFF0F4F3</color>
+    <color name="ended_hint">#FF9EB5AE</color>
+    <color name="danger">#FFD64545</color>
+    <color name="danger_bg">#FFFDECEC</color>
+    <color name="note">#FF8C8C8C</color>
+    <color name="review">#FFE07A1A</color>
+    <color name="review_bg">#FFFEF3E2</color>
+    <color name="sunday">#FFB04040</color>
 </resources>
