@@ -48,6 +48,9 @@
         <activity
             android:name=".ui.dur.DurInteractionDetailActivity"
             android:exported="false" />
+        <activity
+            android:name=".ui.graph.DrugRelationGraphActivity"
+            android:exported="false" />
     </application>
 
 </manifest>

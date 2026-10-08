@@ -1,0 +1,192 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:overScrollMode="never"
+    android:scrollbars="none">
+
+    <LinearLayout
+        android:layout_width="@dimen/dialog_width"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center_horizontal"
+        android:background="@drawable/bg_surface_card"
+        android:elevation="4dp"
+        android:orientation="vertical"
+        android:padding="@dimen/card_padding">
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <ImageView
+                android:layout_width="14dp"
+                android:layout_height="14dp"
+                android:contentDescription="@null"
+                android:importantForAccessibility="no"
+                android:src="@drawable/ic_warning" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="5dp"
+                android:text="@string/dur_badge"
+                android:textColor="@color/warning_title"
+                android:textSize="12sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="14dp"
+            android:background="@drawable/bg_surface_card"
+            android:elevation="4dp"
+            android:orientation="vertical"
+            android:padding="@dimen/card_padding">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:minHeight="@dimen/list_row_min_height"
+                android:orientation="horizontal">
+
+                <FrameLayout
+                    android:layout_width="@dimen/choice_icon_size"
+                    android:layout_height="@dimen/choice_icon_size"
+                    android:background="@drawable/bg_icon_tile">
+
+                    <ImageView
+                        android:layout_width="18dp"
+                        android:layout_height="18dp"
+                        android:layout_gravity="center"
+                        android:contentDescription="@null"
+                        android:importantForAccessibility="no"
+                        android:src="@drawable/ic_pill" />
+                </FrameLayout>
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="12dp"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:id="@+id/graph_detail_drug_a"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:textColor="@color/ink"
+                        android:textSize="14sp"
+                        tools:text="메트포르민정 500mg" />
+
+                    <TextView
+                        android:id="@+id/graph_detail_drug_a_caption"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="3dp"
+                        android:textColor="@color/graph_caption"
+                        android:textSize="12sp"
+                        tools:text="혈당강하제" />
+                </LinearLayout>
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="14dp"
+                android:gravity="center_vertical"
+                android:minHeight="@dimen/list_row_min_height"
+                android:orientation="horizontal">
+
+                <FrameLayout
+                    android:layout_width="@dimen/choice_icon_size"
+                    android:layout_height="@dimen/choice_icon_size"
+                    android:background="@drawable/bg_icon_tile">
+
+                    <ImageView
+                        android:layout_width="18dp"
+                        android:layout_height="18dp"
+                        android:layout_gravity="center"
+                        android:contentDescription="@null"
+                        android:importantForAccessibility="no"
+                        android:src="@drawable/ic_pill" />
+                </FrameLayout>
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="12dp"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:id="@+id/graph_detail_drug_b"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:textColor="@color/ink"
+                        android:textSize="14sp"
+                        tools:text="요오드 조영제" />
+
+                    <TextView
+                        android:id="@+id/graph_detail_drug_b_caption"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="3dp"
+                        android:textColor="@color/graph_caption"
+                        android:textSize="12sp"
+                        tools:text="검사·시술 시 사용될 수 있음" />
+                </LinearLayout>
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/graph_detail_description"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="14dp"
+                android:letterSpacing="-0.03"
+                android:lineSpacingMultiplier="1.55"
+                android:textColor="@color/ink"
+                android:textSize="14sp"
+                tools:text="두 성분의 병용금기 정보가 DUR에 등재되어 있습니다." />
+        </LinearLayout>
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="14dp"
+            android:letterSpacing="-0.03"
+            android:lineSpacingMultiplier="1.5"
+            android:text="@string/graph_source"
+            android:textColor="@color/muted"
+            android:textSize="12sp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="14dp"
+            android:letterSpacing="-0.03"
+            android:lineSpacingMultiplier="1.5"
+            android:text="@string/dur_disclaimer"
+            android:textColor="@color/muted"
+            android:textSize="12sp" />
+
+        <TextView
+            android:id="@+id/graph_detail_confirm"
+            android:layout_width="match_parent"
+            android:layout_height="@dimen/login_button_height"
+            android:layout_marginTop="14dp"
+            android:background="@drawable/bg_button_deep"
+            android:clickable="true"
+            android:focusable="true"
+            android:foreground="?attr/selectableItemBackground"
+            android:gravity="center"
+            android:text="@string/graph_confirm"
+            android:textColor="@color/white"
+            android:textSize="14sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+</ScrollView>

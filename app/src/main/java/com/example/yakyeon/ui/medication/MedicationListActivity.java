@@ -98,7 +98,7 @@ public class MedicationListActivity extends AppCompatActivity {
     private MedicationAdapter prepareList(int listId) {
         RecyclerView list = findViewById(listId);
         list.setLayoutManager(new LinearLayoutManager(this));
-        MedicationAdapter adapter = new MedicationAdapter(this::showDetail);
+        MedicationAdapter adapter = new MedicationAdapter();
         adapter.setOnMedicationLongClickListener(this::showEdit);
         list.setAdapter(adapter);
         return adapter;
@@ -108,10 +108,6 @@ public class MedicationListActivity extends AppCompatActivity {
         View section = findViewById(sectionId);
         section.setVisibility(items.isEmpty() ? View.GONE : View.VISIBLE);
         adapter.submit(items);
-    }
-
-    private void showDetail(Medication medication) {
-        MedicationDetailSheet.open(getSupportFragmentManager(), medication.getId());
     }
 
     private void showEdit(Medication medication) {

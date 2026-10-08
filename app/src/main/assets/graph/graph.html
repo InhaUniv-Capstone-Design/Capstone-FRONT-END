@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+    <style>
+        html, body, #cy {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            background: #ffffff;
+            overflow: hidden;
+        }
+    </style>
+    <script src="cytoscape.min.js"></script>
+</head>
+<body>
+<div id="cy"></div>
+<script>
+    var cy = null;
+
+    function renderGraph(data) {
+        if (cy) {
+            cy.destroy();
+            cy = null;
+        }
+        cy = cytoscape({
+            container: document.getElementById('cy'),
+            elements: data || { nodes: [], edges: [] },
+            minZoom: 0.15,
+            maxZoom: 3,
+            boxSelectionEnabled: false,
+            autounselectify: true,
+            userPanningEnabled: true,
+            userZoomingEnabled: true,
+            style: [
+                {
+                    selector: 'node',
+                    style: {
+                        'shape': 'round-rectangle',
+                        'background-color': '#EAF8F3',
+                        'label': 'data(label)',
+                        'color': '#247C68',
+                        'font-size': '12px',
+                        'font-weight': 'bold',
+                        'text-valign': 'center',
+                        'text-halign': 'center',
+                        'text-wrap': 'wrap',
+                        'text-max-width': '108px',
+                        'width': 'label',
+                        'height': 'label',
+                        'padding': '8px',
+                        'border-width': 0
+                    }
+                },
+                {
+                    selector: 'edge',
+                    style: {
+                        'width': 3,
+                        'line-color': '#12735E',
+                        'curve-style': 'bezier',
+                        'target-arrow-shape': 'none',
+                        'source-arrow-shape': 'none'
+                    }
+                }
+            ],
+            layout: {
+                name: 'cose',
+                animate: false,
+                fit: true,
+                padding: 24,
+                nodeDimensionsIncludeLabels: true,
+                randomize: true,
+                componentSpacing: 72,
+                nodeRepulsion: function () { return 16000; },
+                nodeOverlap: 48,
+                idealEdgeLength: function () { return 120; },
+                edgeElasticity: function () { return 80; },
+                gravity: 60,
+                numIter: 1400,
+                initialTemp: 240,
+                coolingFactor: 0.95,
+                minTemp: 1.0
+            }
+        });
+        cy.fit(undefined, 18);
+        cy.on('tap', 'edge', function (event) {
+            var interactionId = event.target.data('interactionId');
+            if (interactionId && window.YakyeonGraph) {
+                window.YakyeonGraph.onEdgeSelected(String(interactionId));
+            }
+        });
+    }
+</script>
+</body>
+</html>

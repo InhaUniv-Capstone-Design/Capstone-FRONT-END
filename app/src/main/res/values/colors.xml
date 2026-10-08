@@ -6,6 +6,7 @@
     <color name="brand_dark">#FF247C68</color>
     <color name="ink">#FF17332C</color>
     <color name="muted">#FF6C827C</color>
+    <color name="graph_caption">#FF3D4F4A</color>
     <color name="hint">#FF9AACA7</color>
     <color name="line">#FFDCEAE5</color>
     <color name="line_soft">#FFE5EBE8</color>

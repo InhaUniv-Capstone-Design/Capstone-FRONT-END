@@ -18,20 +18,14 @@ import java.util.List;
 
 public class MedicationAdapter extends RecyclerView.Adapter<MedicationAdapter.Holder> {
 
-    public interface OnMedicationClickListener {
-        void onMedicationClick(Medication medication);
-    }
-
     public interface OnMedicationLongClickListener {
         void onMedicationLongClick(Medication medication);
     }
 
     private final List<Medication> medications = new ArrayList<>();
-    private final OnMedicationClickListener listener;
     private OnMedicationLongClickListener longClickListener;
 
-    public MedicationAdapter(OnMedicationClickListener listener) {
-        this.listener = listener;
+    public MedicationAdapter() {
     }
 
     public void setOnMedicationLongClickListener(OnMedicationLongClickListener longClickListener) {
@@ -74,11 +68,6 @@ public class MedicationAdapter extends RecyclerView.Adapter<MedicationAdapter.Ho
                 ended ? R.drawable.ic_chevron_right_muted : R.drawable.ic_chevron_right
         );
         holder.divider.setVisibility(position == medications.size() - 1 ? View.GONE : View.VISIBLE);
-        holder.row.setOnClickListener(view -> {
-            if (listener != null) {
-                listener.onMedicationClick(medication);
-            }
-        });
         holder.row.setOnLongClickListener(view -> {
             if (longClickListener == null) {
                 return false;

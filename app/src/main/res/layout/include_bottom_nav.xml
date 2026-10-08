@@ -21,6 +21,7 @@
         android:orientation="vertical">
 
         <ImageView
+            android:id="@+id/nav_home_icon"
             android:layout_width="@dimen/nav_icon_size"
             android:layout_height="@dimen/nav_icon_size"
             android:contentDescription="@null"
@@ -28,6 +29,7 @@
             android:src="@drawable/ic_nav_home" />
 
         <TextView
+            android:id="@+id/nav_home_label"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="3dp"
@@ -51,6 +53,7 @@
         android:orientation="vertical">
 
         <ImageView
+            android:id="@+id/nav_graph_icon"
             android:layout_width="@dimen/nav_icon_size"
             android:layout_height="@dimen/nav_icon_size"
             android:contentDescription="@null"
@@ -58,6 +61,7 @@
             android:src="@drawable/ic_nav_chart" />
 
         <TextView
+            android:id="@+id/nav_graph_label"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="3dp"

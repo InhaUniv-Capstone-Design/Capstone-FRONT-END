@@ -9,6 +9,7 @@ import com.example.yakyeon.ui.auth.SignupFormActivity;
 import com.example.yakyeon.ui.auth.SignupTypeActivity;
 import com.example.yakyeon.ui.dur.DurInteractionDetailActivity;
 import com.example.yakyeon.ui.dur.DurInteractionListActivity;
+import com.example.yakyeon.ui.graph.DrugRelationGraphActivity;
 import com.example.yakyeon.ui.medication.MedicationListActivity;
 import com.example.yakyeon.ui.medication.MedicationScheduleActivity;
 import com.example.yakyeon.ui.medication.PrescriptionOcrActivity;
@@ -63,7 +64,7 @@ public final class AppNavigator {
     }
 
     public static void openGraph(Context context) {
-        // TODO: open graph
+        context.startActivity(new Intent(context, DrugRelationGraphActivity.class));
     }
 
     public static void openPillbox(Context context) {

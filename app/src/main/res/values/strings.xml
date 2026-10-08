@@ -85,19 +85,20 @@
     <string name="nav_pillbox">약통</string>
     <string name="nav_settings">설정</string>
 
+    <string name="graph_title">약물 관계</string>
+    <string name="graph_subtitle">함께 복용 중인 약물의 등재 정보를 확인하세요</string>
+    <string name="graph_canvas">약물 관계 그래프</string>
+    <string name="graph_relations_title">함께 보는 관계 %1$d</string>
+    <string name="graph_relation_badge">병용금기</string>
+    <string name="graph_confirm">확인</string>
+    <string name="graph_source">출처 · 식품의약품안전처 DUR 기준일 · 2026년 9월 1일</string>
+
     <string name="medication_list_title">내 약물</string>
     <string name="medication_list_count">복용 중인 약 %1$d개</string>
     <string name="medication_section_active">복용 중인 약물</string>
     <string name="medication_section_ended">복용 종료한 약물</string>
     <string name="medication_register">약 등록하기</string>
     <string name="medication_register_plus">+</string>
-
-    <string name="medication_detail_usage">용법 · 용량</string>
-    <string name="medication_detail_class">약물 분류</string>
-    <string name="medication_detail_source">출처: 의약품안전나라</string>
-    <string name="medication_detail_side_effects">주요 부작용</string>
-    <string name="medication_detail_precautions">주의사항</string>
-    <string name="medication_detail_confirm">확인</string>
 
     <string name="medication_edit_title">약물 정보 수정</string>
     <string name="medication_edit_subtitle">처음 등록한 정보를 불러왔어요</string>
