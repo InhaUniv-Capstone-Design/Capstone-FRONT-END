@@ -29,4 +29,9 @@
     <color name="review">#FFE07A1A</color>
     <color name="review_bg">#FFFEF3E2</color>
     <color name="sunday">#FFB04040</color>
+    <color name="field_fill">#FFF7FAF9</color>
+    <color name="slot_error_bg">#FFFFF7F7</color>
+    <color name="slot_error_line">#FFEBC7CC</color>
+    <color name="slot_error_note_bg">#FFFFF1F1</color>
+    <color name="search_ring">#4D37A98A</color>
 </resources>

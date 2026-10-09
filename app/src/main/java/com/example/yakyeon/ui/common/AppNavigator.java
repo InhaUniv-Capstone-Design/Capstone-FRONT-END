@@ -13,6 +13,10 @@ import com.example.yakyeon.ui.graph.DrugRelationGraphActivity;
 import com.example.yakyeon.ui.medication.MedicationListActivity;
 import com.example.yakyeon.ui.medication.MedicationScheduleActivity;
 import com.example.yakyeon.ui.medication.PrescriptionOcrActivity;
+import com.example.yakyeon.ui.pillbox.DeviceSearchActivity;
+import com.example.yakyeon.ui.pillbox.PillboxActivity;
+import com.example.yakyeon.ui.pillbox.PillboxAlarmActivity;
+import com.example.yakyeon.ui.pillbox.PillboxSettingsActivity;
 
 public final class AppNavigator {
 
@@ -68,7 +72,24 @@ public final class AppNavigator {
     }
 
     public static void openPillbox(Context context) {
-        // TODO: open pillbox
+        if (context instanceof PillboxActivity) {
+            return;
+        }
+        Intent intent = new Intent(context, PillboxActivity.class);
+        intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        context.startActivity(intent);
+    }
+
+    public static void openDeviceSearch(Context context) {
+        context.startActivity(new Intent(context, DeviceSearchActivity.class));
+    }
+
+    public static void openPillboxSettings(Context context) {
+        context.startActivity(new Intent(context, PillboxSettingsActivity.class));
+    }
+
+    public static void openPillboxAlarm(Context context) {
+        context.startActivity(new Intent(context, PillboxAlarmActivity.class));
     }
 
     public static void openSettings(Context context) {

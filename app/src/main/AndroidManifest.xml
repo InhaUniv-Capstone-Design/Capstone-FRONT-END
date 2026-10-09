@@ -51,6 +51,19 @@
         <activity
             android:name=".ui.graph.DrugRelationGraphActivity"
             android:exported="false" />
+        <activity
+            android:name=".ui.pillbox.PillboxActivity"
+            android:exported="false"
+            android:launchMode="singleTop" />
+        <activity
+            android:name=".ui.pillbox.DeviceSearchActivity"
+            android:exported="false" />
+        <activity
+            android:name=".ui.pillbox.PillboxSettingsActivity"
+            android:exported="false" />
+        <activity
+            android:name=".ui.pillbox.PillboxAlarmActivity"
+            android:exported="false" />
     </application>
 
 </manifest>

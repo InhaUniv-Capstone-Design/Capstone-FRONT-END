@@ -188,4 +188,57 @@
         <item>저녁</item>
         <item>취침 전</item>
     </string-array>
+
+    <string name="pillbox_title">스마트 약통</string>
+    <string name="pillbox_empty">연결된 기기가 없습니다</string>
+    <string name="pillbox_empty_title">스마트 약통을 연결해 보세요</string>
+    <string name="pillbox_empty_body">약통 상태와 복용 알림을 앱에서 한눈에 확인할 수 있어요.</string>
+    <string name="pillbox_connect_device">기기 연결</string>
+    <string name="pillbox_consent_title">기기 연결 전 확인</string>
+    <string name="pillbox_consent_message">동의 확인 후 기기 연결을 계속할 수 있어요.</string>
+    <string name="pillbox_consent_step">기기 연결 동의</string>
+    <string name="pillbox_consent_step_number">1</string>
+    <string name="pillbox_consent_legal">[법적 고지 placeholder]</string>
+    <string name="pillbox_consent_item">[동의 항목 placeholder]</string>
+    <string name="pillbox_consent_later">나중에</string>
+    <string name="pillbox_consent_agree">동의하고 연결</string>
+    <string name="pillbox_consent_required">동의 항목을 확인해 주세요.</string>
+    <string name="pillbox_search_title">기기 찾기</string>
+    <string name="pillbox_searching">주변 기기 검색 중</string>
+    <string name="pillbox_search_headline">스마트 약통을 찾고 있어요</string>
+    <string name="pillbox_search_body">약통 연결 설명 내용</string>
+    <string name="pillbox_found">발견된 기기</string>
+    <string name="pillbox_found_count">%1$d개</string>
+    <string name="pillbox_found_hint">연결할 스마트 약통을 선택해 주세요.</string>
+    <string name="pillbox_connect">연결</string>
+    <string name="pillbox_missing">기기가 보이지 않나요?</string>
+    <string name="pillbox_rescan">다시 검색</string>
+    <string name="pillbox_linked">연결됨</string>
+    <string name="pillbox_slots_in_use">약통 %1$d칸 사용 중</string>
+    <string name="pillbox_status_ok">정상</string>
+    <string name="pillbox_status_error">오류</string>
+    <string name="pillbox_open_settings">약통 설정</string>
+    <string name="pillbox_settings_title">약통 설정</string>
+    <string name="pillbox_device_name_label">기기명</string>
+    <string name="pillbox_change">변경</string>
+    <string name="pillbox_connection_status">연결 상태</string>
+    <string name="pillbox_notifications">약통 알림</string>
+    <string name="pillbox_notifications_detail">복용 시간 및 기기 상태 알림</string>
+    <string name="pillbox_alarm_settings">약통 알람 설정</string>
+    <string name="pillbox_slots_active">%1$d칸 사용 중</string>
+    <string name="pillbox_sync">기기 동기화</string>
+    <string name="pillbox_disconnect">연결 해제</string>
+    <string name="pillbox_disconnect_detail">이 기기와 앱의 연결을 해제합니다</string>
+    <string name="pillbox_alarm_title">약통 알람 설정</string>
+    <string name="pillbox_slot_tab">%1$d칸</string>
+    <string name="pillbox_taking">복용 중인 약물</string>
+    <string name="pillbox_medicine_count">%1$d개</string>
+    <string name="pillbox_alarm_unset">--:--</string>
+    <string name="pillbox_alarm_unset_word">미설정</string>
+    <string name="pillbox_alarm_round">%1$d회차 알람 · %2$s</string>
+    <string name="pillbox_alarm_optional">선택 알람 · %1$s</string>
+    <string name="pillbox_alarm_as_needed">정기 알람 없이, 필요할 때만 복용합니다.</string>
+    <string name="pillbox_alarm_warning">알람 시간은 아직 설정되지 않았습니다. 시간을 선택한 뒤 저장해주세요.</string>
+    <string name="pillbox_alarm_save">알람 설정 저장</string>
+    <string name="pillbox_pick_time">시간 선택</string>
 </resources>
