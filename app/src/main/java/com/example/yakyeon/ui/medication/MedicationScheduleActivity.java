@@ -15,6 +15,7 @@ import com.example.yakyeon.data.MedicationScheduleRepository;
 import com.example.yakyeon.data.mock.MockMedicationScheduleRepository;
 import com.example.yakyeon.data.model.ScheduleDose;
 import com.example.yakyeon.ui.common.BottomNav;
+import com.example.yakyeon.ui.common.NotificationEntry;
 import com.example.yakyeon.ui.common.WindowSpacing;
 
 import java.text.SimpleDateFormat;
@@ -43,6 +44,7 @@ public class MedicationScheduleActivity extends AppCompatActivity {
         setContentView(R.layout.activity_medication_schedule);
         WindowSpacing.applySystemBars(findViewById(R.id.schedule_root));
         BottomNav.bind(this);
+        NotificationEntry.bind(this);
 
         weekRow = findViewById(R.id.schedule_week);
         doseList = findViewById(R.id.schedule_doses);

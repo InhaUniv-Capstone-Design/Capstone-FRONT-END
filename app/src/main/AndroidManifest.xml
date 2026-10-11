@@ -40,6 +40,9 @@
             android:name=".ui.medication.MedicationScheduleActivity"
             android:exported="false" />
         <activity
+            android:name=".ui.medication.MedicationReminderActivity"
+            android:exported="false" />
+        <activity
             android:name=".ui.medication.PrescriptionOcrActivity"
             android:exported="false" />
         <activity

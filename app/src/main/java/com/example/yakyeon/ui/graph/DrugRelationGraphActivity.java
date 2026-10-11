@@ -26,6 +26,7 @@ import com.example.yakyeon.data.model.DrugRelationGraph;
 import com.example.yakyeon.data.model.DurInteraction;
 import com.example.yakyeon.data.model.Medication;
 import com.example.yakyeon.ui.common.BottomNav;
+import com.example.yakyeon.ui.common.NotificationEntry;
 import com.example.yakyeon.ui.common.WindowSpacing;
 
 import java.util.Collections;
@@ -48,6 +49,7 @@ public class DrugRelationGraphActivity extends AppCompatActivity {
         setContentView(R.layout.activity_drug_relation_graph);
         WindowSpacing.applySystemBars(findViewById(R.id.graph_root));
         BottomNav.bind(this, true);
+        NotificationEntry.bind(this);
 
         graph = graphRepository.load();
         bindRelations(graph);

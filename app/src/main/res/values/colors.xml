@@ -34,4 +34,13 @@
     <color name="slot_error_line">#FFEBC7CC</color>
     <color name="slot_error_note_bg">#FFFFF1F1</color>
     <color name="search_ring">#4D37A98A</color>
+    <color name="reminder_on_time">#FF1B8C5E</color>
+    <color name="reminder_on_time_bg">#FFE6F9F2</color>
+    <color name="reminder_delayed">#FFB07D00</color>
+    <color name="reminder_delayed_bg">#FFFFF3CD</color>
+    <color name="reminder_delayed_row">#FFFFFBF0</color>
+    <color name="reminder_missed">#FF7C3AED</color>
+    <color name="reminder_missed_bg">#FFF3E8FF</color>
+    <color name="reminder_missed_row">#FFF8F5FF</color>
+    <color name="reminder_band">#FFF0F7F4</color>
 </resources>

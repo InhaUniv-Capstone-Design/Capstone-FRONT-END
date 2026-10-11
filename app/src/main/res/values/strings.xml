@@ -241,4 +241,19 @@
     <string name="pillbox_alarm_warning">알람 시간은 아직 설정되지 않았습니다. 시간을 선택한 뒤 저장해주세요.</string>
     <string name="pillbox_alarm_save">알람 설정 저장</string>
     <string name="pillbox_pick_time">시간 선택</string>
+
+    <string name="reminder_title">복용 알림</string>
+    <string name="reminder_subtitle">최근 2주 기록</string>
+    <string name="reminder_filter_all">전체</string>
+    <string name="reminder_filter_on_time">정상</string>
+    <string name="reminder_filter_delayed">지연</string>
+    <string name="reminder_filter_missed">누락</string>
+    <string name="reminder_period">최근 2주</string>
+    <string name="reminder_period_change">변경</string>
+    <string name="reminder_status_badge">· %1$s</string>
+    <string name="reminder_notice">약통 또는 직접 입력한 복용 기록을 함께 표시합니다.</string>
+    <string name="reminder_disclaimer">복용 상태는 약통 개방·인출 감지를 기준으로 하며, 실제 복용한 약물을 직접 확인하지는 않습니다.</string>
+    <string name="reminder_popup_label">복약 알림</string>
+    <string name="reminder_select_all">전체 선택</string>
+    <string name="reminder_complete">선택 약물 복약 완료</string>
 </resources>

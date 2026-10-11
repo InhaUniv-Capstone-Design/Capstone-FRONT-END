@@ -19,7 +19,8 @@ public final class BottomNav {
     private enum Selection {
         HOME,
         GRAPH,
-        PILLBOX
+        PILLBOX,
+        NONE
     }
 
     public static void bind(AppCompatActivity activity) {
@@ -32,6 +33,10 @@ public final class BottomNav {
 
     public static void bindPillbox(AppCompatActivity activity) {
         attach(activity, Selection.PILLBOX);
+    }
+
+    public static void bindNeutral(AppCompatActivity activity) {
+        attach(activity, Selection.NONE);
     }
 
     private static void attach(AppCompatActivity activity, Selection selection) {
@@ -55,7 +60,18 @@ public final class BottomNav {
             showGraphSelected(activity);
         } else if (selection == Selection.PILLBOX) {
             showPillboxSelected(activity);
+        } else if (selection == Selection.NONE) {
+            showNoneSelected(activity);
         }
+    }
+
+    private static void showNoneSelected(AppCompatActivity activity) {
+        int inactive = ContextCompat.getColor(activity, R.color.nav_inactive);
+        ImageView homeIcon = activity.findViewById(R.id.nav_home_icon);
+        TextView homeLabel = activity.findViewById(R.id.nav_home_label);
+        homeIcon.setImageTintList(ColorStateList.valueOf(inactive));
+        homeLabel.setTextColor(inactive);
+        homeLabel.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
     }
 
     private static void showGraphSelected(AppCompatActivity activity) {

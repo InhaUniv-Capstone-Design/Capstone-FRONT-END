@@ -11,6 +11,7 @@ import com.example.yakyeon.ui.dur.DurInteractionDetailActivity;
 import com.example.yakyeon.ui.dur.DurInteractionListActivity;
 import com.example.yakyeon.ui.graph.DrugRelationGraphActivity;
 import com.example.yakyeon.ui.medication.MedicationListActivity;
+import com.example.yakyeon.ui.medication.MedicationReminderActivity;
 import com.example.yakyeon.ui.medication.MedicationScheduleActivity;
 import com.example.yakyeon.ui.medication.PrescriptionOcrActivity;
 import com.example.yakyeon.ui.pillbox.DeviceSearchActivity;
@@ -65,6 +66,13 @@ public final class AppNavigator {
 
     public static void openSchedule(Context context) {
         context.startActivity(new Intent(context, MedicationScheduleActivity.class));
+    }
+
+    public static void openReminders(Context context) {
+        if (context instanceof MedicationReminderActivity) {
+            return;
+        }
+        context.startActivity(new Intent(context, MedicationReminderActivity.class));
     }
 
     public static void openGraph(Context context) {

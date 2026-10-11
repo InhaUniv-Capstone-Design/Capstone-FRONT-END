@@ -16,6 +16,7 @@ import com.example.yakyeon.data.mock.MockMedicationRepository;
 import com.example.yakyeon.data.model.Medication;
 import com.example.yakyeon.ui.common.AppNavigator;
 import com.example.yakyeon.ui.common.BottomNav;
+import com.example.yakyeon.ui.common.NotificationEntry;
 import com.example.yakyeon.ui.common.WindowSpacing;
 
 import java.util.List;
@@ -34,6 +35,7 @@ public class MedicationListActivity extends AppCompatActivity {
         setContentView(R.layout.activity_medication_list);
         WindowSpacing.applySystemBars(findViewById(R.id.medication_list_root));
         BottomNav.bind(this);
+        NotificationEntry.bind(this);
 
         countView = findViewById(R.id.medication_list_count);
         activeAdapter = prepareList(R.id.medication_active_list);

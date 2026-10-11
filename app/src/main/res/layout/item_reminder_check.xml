@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/reminder_check_row"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="@drawable/bg_reminder_item_on"
+    android:gravity="center_vertical"
+    android:orientation="horizontal"
+    android:padding="14dp">
+
+    <FrameLayout
+        android:id="@+id/reminder_check_box"
+        android:layout_width="20dp"
+        android:layout_height="20dp"
+        android:background="@drawable/bg_reminder_check_on">
+
+        <ImageView
+            android:id="@+id/reminder_check_icon"
+            android:layout_width="10dp"
+            android:layout_height="10dp"
+            android:layout_gravity="center"
+            android:contentDescription="@null"
+            android:importantForAccessibility="no"
+            android:src="@drawable/ic_reminder_check" />
+    </FrameLayout>
+
+    <TextView
+        android:id="@+id/reminder_check_name"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="12dp"
+        android:layout_weight="1"
+        android:textColor="@color/ink"
+        android:textSize="14sp"
+        android:textStyle="bold"
+        tools:text="메트포르민정 500mg" />
+</LinearLayout>

@@ -18,6 +18,7 @@ import com.example.yakyeon.data.model.PillboxMedicine;
 import com.example.yakyeon.data.model.PillboxSession;
 import com.example.yakyeon.data.model.PillboxSlot;
 import com.example.yakyeon.ui.common.BottomNav;
+import com.example.yakyeon.ui.common.NotificationEntry;
 import com.example.yakyeon.ui.common.WindowSpacing;
 
 import java.util.ArrayList;
@@ -44,6 +45,7 @@ public class PillboxAlarmActivity extends AppCompatActivity {
         setContentView(R.layout.activity_pillbox_alarm);
         WindowSpacing.applySystemBars(findViewById(R.id.pillbox_alarm_root));
         BottomNav.bindPillbox(this);
+        NotificationEntry.bind(this);
         tabs.add(findViewById(R.id.pillbox_alarm_tab_1));
         tabs.add(findViewById(R.id.pillbox_alarm_tab_2));
         tabs.add(findViewById(R.id.pillbox_alarm_tab_3));

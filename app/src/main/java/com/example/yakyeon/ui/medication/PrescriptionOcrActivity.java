@@ -26,6 +26,7 @@ import com.example.yakyeon.data.mock.MockPrescriptionOcrRepository;
 import com.example.yakyeon.data.model.Medication;
 import com.example.yakyeon.data.model.PrescriptionOcrResult;
 import com.example.yakyeon.ui.common.BottomNav;
+import com.example.yakyeon.ui.common.NotificationEntry;
 import com.example.yakyeon.ui.common.WindowSpacing;
 
 import java.util.ArrayList;
@@ -52,6 +53,7 @@ public class PrescriptionOcrActivity extends AppCompatActivity implements OcrCon
         setContentView(R.layout.activity_prescription_ocr);
         WindowSpacing.applySystemBars(findViewById(R.id.ocr_root));
         BottomNav.bind(this);
+        NotificationEntry.bind(this);
 
         ImageView photo = findViewById(R.id.ocr_photo);
         photo.setClipToOutline(true);

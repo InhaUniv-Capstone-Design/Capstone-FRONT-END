@@ -11,6 +11,7 @@ import com.example.yakyeon.data.MedicationRepository;
 import com.example.yakyeon.data.mock.MockMedicationRepository;
 import com.example.yakyeon.ui.common.AppNavigator;
 import com.example.yakyeon.ui.common.BottomNav;
+import com.example.yakyeon.ui.common.NotificationEntry;
 import com.example.yakyeon.ui.common.WindowSpacing;
 
 public class MainActivity extends AppCompatActivity {
@@ -24,6 +25,7 @@ public class MainActivity extends AppCompatActivity {
         setContentView(R.layout.activity_home);
         WindowSpacing.applySystemBars(findViewById(R.id.home_root));
         BottomNav.bind(this);
+        NotificationEntry.bind(this);
 
         findViewById(R.id.home_status_card).setOnClickListener(
                 view -> AppNavigator.openMedicationList(this)

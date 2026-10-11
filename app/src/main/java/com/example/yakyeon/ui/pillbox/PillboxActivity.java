@@ -17,6 +17,7 @@ import com.example.yakyeon.data.model.PillboxSession;
 import com.example.yakyeon.data.model.PillboxSlot;
 import com.example.yakyeon.ui.common.AppNavigator;
 import com.example.yakyeon.ui.common.BottomNav;
+import com.example.yakyeon.ui.common.NotificationEntry;
 import com.example.yakyeon.ui.common.WindowSpacing;
 
 public class PillboxActivity extends AppCompatActivity implements PillboxConsentDialog.Listener {
@@ -30,6 +31,7 @@ public class PillboxActivity extends AppCompatActivity implements PillboxConsent
         setContentView(R.layout.activity_pillbox);
         WindowSpacing.applySystemBars(findViewById(R.id.pillbox_root));
         BottomNav.bindPillbox(this);
+        NotificationEntry.bind(this);
         findViewById(R.id.pillbox_connect).setOnClickListener(
                 view -> PillboxConsentDialog.open(getSupportFragmentManager())
         );

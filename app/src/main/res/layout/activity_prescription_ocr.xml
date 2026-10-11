@@ -26,14 +26,20 @@
             android:textSize="18sp" />
 
         <FrameLayout
+            android:id="@+id/header_notifications"
             android:layout_width="@dimen/back_button_size"
-            android:layout_height="@dimen/back_button_size">
+            android:layout_height="@dimen/back_button_size"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:clickable="true"
+            android:contentDescription="@string/home_notifications"
+            android:focusable="true">
 
             <ImageView
                 android:layout_width="@dimen/bell_icon_size"
                 android:layout_height="@dimen/bell_icon_size"
                 android:layout_gravity="center"
-                android:contentDescription="@string/home_notifications"
+                android:contentDescription="@null"
+                android:importantForAccessibility="no"
                 android:src="@drawable/ic_bell" />
         </FrameLayout>
     </LinearLayout>
