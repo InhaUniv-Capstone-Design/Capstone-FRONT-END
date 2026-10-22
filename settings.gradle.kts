@@ -22,5 +22,6 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "yakyeon"
+rootProject.name = "yakyeon2"
 include(":app")
+ 

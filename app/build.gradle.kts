@@ -3,14 +3,14 @@ plugins {
 }
 
 android {
-    namespace = "com.example.yakyeon"
+    namespace = "com.example.yakyeon2"
     compileSdk {
         version = release(37)
     }
 
     defaultConfig {
-        applicationId = "com.example.yakyeon"
-        minSdk = 24
+        applicationId = "com.example.yakyeon2"
+        minSdk = 26
         targetSdk = 37
         versionCode = 1
         versionName = "1.0"
