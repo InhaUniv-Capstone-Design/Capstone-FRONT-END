@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="@color/white"
+    android:elevation="16dp"
+    android:orientation="vertical"
+    android:paddingStart="20dp"
+    android:paddingTop="24dp"
+    android:paddingEnd="20dp"
+    android:paddingBottom="16dp">
+
+    <ImageView
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_gravity="center_horizontal"
+        android:background="@drawable/bg_modal_icon_warn"
+        android:contentDescription="@null"
+        android:padding="13dp"
+        android:src="@drawable/ic_modal_help" />
+
+    <TextView
+        android:id="@+id/text_sheet_title"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="10dp"
+        android:gravity="center"
+        android:textColor="@color/yakyeon_text"
+        android:textSize="16sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:id="@+id/text_sheet_message"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:gravity="center"
+        android:textColor="@color/yakyeon_muted"
+        android:textSize="13sp"
+        android:visibility="gone" />
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:layout_marginTop="10dp"
+        android:background="@color/yakyeon_sheet_line" />
+
+    <LinearLayout
+        android:id="@+id/sheet_options"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="22dp"
+        android:orientation="vertical" />
+
+    <TextView
+        android:id="@+id/button_sheet_cancel"
+        android:layout_width="match_parent"
+        android:layout_height="26dp"
+        android:layout_marginTop="11dp"
+        android:gravity="center"
+        android:text="@string/action_cancel"
+        android:textColor="@color/yakyeon_tab_inactive"
+        android:textSize="13sp" />
+</LinearLayout>

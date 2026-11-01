@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 레이아웃 기본 간격이다. Figma에서 측정한 값이 아니다. -->
+    <dimen name="space_xs">4dp</dimen>
+    <dimen name="space_s">8dp</dimen>
+    <dimen name="space_m">16dp</dimen>
+    <dimen name="space_l">24dp</dimen>
+    <dimen name="header_min_height">56dp</dimen>
+    <dimen name="header_list_min">40dp</dimen>
+    <dimen name="min_touch_target">48dp</dimen>
+</resources>

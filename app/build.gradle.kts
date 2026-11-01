@@ -14,8 +14,18 @@ android {
         targetSdk = 37
         versionCode = 1
         versionName = "1.0"
+        val apiBaseUrl = (project.findProperty("yakyeon.apiBaseUrl") as String?) ?: "http://localhost:8080"
+        buildConfigField(
+            "String",
+            "API_BASE_URL",
+            "\"" + apiBaseUrl.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
+        )
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    buildFeatures {
+        buildConfig = true
     }
 
     buildTypes {
@@ -37,6 +47,7 @@ dependencies {
     implementation(libs.constraintlayout)
     implementation(libs.material)
     testImplementation(libs.junit)
+    testImplementation("org.json:json:20240303")
     androidTestImplementation(libs.espresso.core)
     androidTestImplementation(libs.ext.junit)
 }

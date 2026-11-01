@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
+    <style>
+        html, body, #graph {
+            margin: 0;
+            width: 100%;
+            height: 100%;
+            background: #ffffff;
+            overflow: hidden;
+        }
+    </style>
+</head>
+<body>
+<div id="graph"></div>
+<script src="cytoscape.min.js"></script>
+<script>
+    var graph;
+
+    function renderGraph(payload) {
+        var elements = [];
+        var nodes = payload && payload.nodes ? payload.nodes : [];
+        var edges = payload && payload.edges ? payload.edges : [];
+        nodes.forEach(function (node) {
+            var name = node.name == null ? "" : String(node.name);
+            elements.push({
+                data: {
+                    id: String(node.id),
+                    name: name,
+                    related: node.related ? "yes" : "no",
+                    checked: node.checked === false ? "no" : "yes",
+                    labelWidth: Math.max(64, name.length * 16 + 28)
+                }
+            });
+        });
+        edges.forEach(function (edge) {
+            elements.push({
+                data: {
+                    id: String(edge.id),
+                    source: String(edge.source),
+                    target: String(edge.target)
+                }
+            });
+        });
+        if (graph) {
+            graph.destroy();
+            graph = null;
+        }
+        graph = cytoscape({
+            container: document.getElementById("graph"),
+            elements: elements,
+            minZoom: 0.35,
+            maxZoom: 2.8,
+            boxSelectionEnabled: false,
+            autoungrabify: false,
+            layout: {
+                name: "circle",
+                avoidOverlap: true,
+                spacingFactor: 1.2,
+                fit: true,
+                padding: 48
+            },
+            style: [
+                {
+                    selector: "node",
+                    style: {
+                        "label": "data(name)",
+                        "background-color": "#EAF8F3",
+                        "color": "#247C68",
+                        "font-size": 12,
+                        "font-weight": "bold",
+                        "text-valign": "center",
+                        "text-halign": "center",
+                        "text-wrap": "ellipsis",
+                        "text-max-width": 120,
+                        "shape": "round-rectangle",
+                        "width": "data(labelWidth)",
+                        "height": 34,
+                        "border-width": 1,
+                        "border-color": "#000000"
+                    }
+                },
+                {
+                    selector: "node[related = 'yes']",
+                    style: {
+                        "border-width": 3,
+                        "border-color": "#12735E"
+                    }
+                },
+                {
+                    selector: "node[checked = 'no']",
+                    style: {
+                        "background-color": "#F4F6F5",
+                        "color": "#5C6562",
+                        "border-width": 1,
+                        "border-style": "dashed",
+                        "border-color": "#8C9491"
+                    }
+                },
+                {
+                    selector: "edge",
+                    style: {
+                        "width": 2,
+                        "line-color": "#12735E",
+                        "curve-style": "straight"
+                    }
+                }
+            ]
+        });
+        graph.on("tap", "node", function (event) {
+            if (window.AndroidGraph) {
+                window.AndroidGraph.onNode(event.target.id());
+            }
+        });
+        graph.on("tap", "edge", function (event) {
+            if (window.AndroidGraph) {
+                window.AndroidGraph.onEdge(event.target.id());
+            }
+        });
+        function place() {
+            if (!graph) {
+                return;
+            }
+            graph.resize();
+            graph.fit(undefined, 48);
+            if (graph.zoom() > 1.15) {
+                graph.zoom(1.15);
+                graph.center();
+            }
+        }
+        place();
+        requestAnimationFrame(place);
+        window.onresize = place;
+    }
+</script>
+</body>
+</html>

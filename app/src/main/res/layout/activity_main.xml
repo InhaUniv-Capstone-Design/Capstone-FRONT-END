@@ -5,15 +5,48 @@
     android:id="@+id/main"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:background="@color/white"
     tools:context=".MainActivity">
 
-    <TextView
-        android:layout_width="wrap_content"
+    <com.example.yakyeon2.ui.YakyeonHeader
+        android:id="@+id/header"
+        android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:text="Hello World!"
-        app:layout_constraintBottom_toBottomOf="parent"
+        android:minHeight="@dimen/header_min_height"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
+
+    <FrameLayout
+        android:id="@+id/screen_container"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        app:layout_constraintBottom_toTopOf="@id/bottom_nav"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/header" />
+
+    <com.google.android.material.bottomnavigation.BottomNavigationView
+        android:id="@+id/bottom_nav"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:minHeight="68dp"
+        android:background="@drawable/yakyeon_bottom_nav_bg"
+        app:activeIndicatorLabelPadding="2dp"
+        app:itemActiveIndicatorStyle="@style/Widget.Yakyeon.ActiveIndicator"
+        app:itemIconSize="28dp"
+        app:itemIconTint="@color/yakyeon_tab_tint"
+        app:itemPaddingBottom="2dp"
+        app:itemPaddingTop="4dp"
+        app:itemTextAppearanceActive="@style/TextAppearance.Yakyeon.Tab"
+        app:itemTextAppearanceInactive="@style/TextAppearance.Yakyeon.Tab"
+        app:itemTextColor="@color/yakyeon_tab_tint"
+        app:labelFontScalingEnabled="false"
+        app:labelMaxLines="1"
+        app:labelVisibilityMode="labeled"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:menu="@menu/menu_main_tabs" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>

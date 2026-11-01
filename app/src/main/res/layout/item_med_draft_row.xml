@@ -1,0 +1,293 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginTop="8dp"
+    android:background="@drawable/yakyeon_med_card"
+    android:orientation="vertical"
+    android:padding="12dp">
+
+    <LinearLayout
+        android:id="@+id/row_header"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:minHeight="48dp"
+        android:orientation="horizontal">
+
+        <ImageView
+            android:layout_width="38dp"
+            android:layout_height="38dp"
+            android:background="@drawable/yakyeon_icon_tile"
+            android:contentDescription="@string/med_field_name"
+            android:padding="10dp"
+            android:src="@drawable/ic_yakyeon_pill" />
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="12dp"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/text_row_name"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textColor="@color/yakyeon_text"
+                android:textSize="14sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/text_row_frequency"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:textColor="@color/yakyeon_muted"
+                android:textSize="12sp" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/text_row_chevron"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="›"
+            android:textColor="@color/yakyeon_muted"
+            android:textSize="18sp" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/panel_expand"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:visibility="gone">
+
+        <TextView
+            style="@style/Widget.Yakyeon.FieldLabel"
+            android:text="@string/med_field_name" />
+
+        <TextView
+            android:id="@+id/text_name_value"
+            android:layout_width="match_parent"
+            android:layout_height="38dp"
+            android:layout_marginTop="4dp"
+            android:background="@drawable/yakyeon_select_field"
+            android:gravity="center_vertical"
+            android:paddingStart="12dp"
+            android:paddingEnd="12dp"
+            android:textColor="@color/yakyeon_text"
+            android:textSize="12sp" />
+
+        <TextView
+            android:id="@+id/text_name_kind"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:textColor="@color/yakyeon_muted"
+            android:textSize="11sp"
+            android:visibility="gone" />
+
+        <TextView
+            style="@style/Widget.Yakyeon.FieldLabel"
+            android:layout_marginTop="8dp"
+            android:text="@string/med_field_amount" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <EditText
+                android:id="@+id/field_amount_number"
+                android:layout_width="0dp"
+                android:layout_height="38dp"
+                android:layout_weight="1"
+                android:background="@drawable/yakyeon_select_field"
+                android:digits="0123456789."
+                android:gravity="center_vertical"
+                android:hint="@string/med_amount_number"
+                android:importantForAutofill="no"
+                android:inputType="numberDecimal"
+                android:maxLines="1"
+                android:paddingStart="12dp"
+                android:paddingEnd="12dp"
+                android:textColor="@color/yakyeon_text"
+                android:textColorHint="@color/yakyeon_muted"
+                android:textSize="12sp" />
+
+            <TextView
+                android:id="@+id/text_amount_unit"
+                android:layout_width="0dp"
+                android:layout_height="38dp"
+                android:layout_marginStart="8dp"
+                android:layout_weight="1"
+                android:background="@drawable/yakyeon_select_field"
+                android:gravity="center_vertical"
+                android:paddingStart="12dp"
+                android:paddingEnd="12dp"
+                android:text="@string/med_amount_unit"
+                android:textColor="@color/yakyeon_muted"
+                android:textSize="12sp" />
+        </LinearLayout>
+
+        <TextView
+            style="@style/Widget.Yakyeon.FieldLabel"
+            android:layout_marginTop="8dp"
+            android:text="@string/med_field_count" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:orientation="horizontal">
+
+            <CheckBox
+                android:id="@+id/check_morning"
+                style="@style/Widget.Yakyeon.RoundCheck"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:maxLines="1"
+                android:text="@string/round_morning" />
+
+            <CheckBox
+                android:id="@+id/check_lunch"
+                style="@style/Widget.Yakyeon.RoundCheck"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:maxLines="1"
+                android:text="@string/round_lunch" />
+
+            <CheckBox
+                android:id="@+id/check_evening"
+                style="@style/Widget.Yakyeon.RoundCheck"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:maxLines="1"
+                android:text="@string/round_evening" />
+
+            <CheckBox
+                android:id="@+id/check_bedtime"
+                style="@style/Widget.Yakyeon.RoundCheck"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:maxLines="1"
+                android:text="@string/round_bedtime" />
+        </LinearLayout>
+
+        <TextView
+            style="@style/Widget.Yakyeon.FieldLabel"
+            android:layout_marginTop="8dp"
+            android:text="@string/med_field_timing" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:orientation="horizontal">
+
+            <CheckBox
+                android:id="@+id/check_timing_before"
+                style="@style/Widget.Yakyeon.RoundCheck"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:maxLines="1"
+                android:text="@string/med_timing_before" />
+
+            <CheckBox
+                android:id="@+id/check_timing_after"
+                style="@style/Widget.Yakyeon.RoundCheck"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1.35"
+                android:maxLines="1"
+                android:text="@string/med_timing_after" />
+
+            <CheckBox
+                android:id="@+id/check_timing_bed"
+                style="@style/Widget.Yakyeon.RoundCheck"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:maxLines="1"
+                android:text="@string/med_timing_bed" />
+        </LinearLayout>
+
+        <TextView
+            style="@style/Widget.Yakyeon.FieldLabel"
+            android:layout_marginTop="8dp"
+            android:text="@string/med_field_period" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/text_period_start"
+                android:layout_width="0dp"
+                android:layout_height="38dp"
+                android:layout_weight="1"
+                android:background="@drawable/yakyeon_select_field"
+                android:gravity="center_vertical"
+                android:paddingStart="12dp"
+                android:paddingEnd="12dp"
+                android:text="@string/med_period_start"
+                android:textColor="@color/yakyeon_muted"
+                android:textSize="12sp" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:layout_marginEnd="8dp"
+                android:text="-"
+                android:textColor="@color/yakyeon_muted"
+                android:textSize="14sp" />
+
+            <TextView
+                android:id="@+id/text_period_end"
+                android:layout_width="0dp"
+                android:layout_height="38dp"
+                android:layout_weight="1"
+                android:background="@drawable/yakyeon_select_field"
+                android:gravity="center_vertical"
+                android:paddingStart="12dp"
+                android:paddingEnd="12dp"
+                android:text="@string/med_period_end"
+                android:textColor="@color/yakyeon_muted"
+                android:textSize="12sp" />
+        </LinearLayout>
+
+        <CheckBox
+            android:id="@+id/check_confirmed"
+            style="@style/Widget.Yakyeon.CheckBox"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="@string/med_confirm_item"
+            android:textSize="12sp" />
+
+        <TextView
+            android:id="@+id/button_delete_med"
+            android:layout_width="wrap_content"
+            android:layout_height="36dp"
+            android:layout_gravity="center_horizontal"
+            android:layout_marginTop="8dp"
+            android:gravity="center"
+            android:paddingStart="16dp"
+            android:paddingEnd="16dp"
+            android:text="@string/med_delete"
+            android:textColor="@color/yakyeon_muted"
+            android:textSize="13sp" />
+    </LinearLayout>
+</LinearLayout>

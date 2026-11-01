@@ -2,4 +2,53 @@
 <resources>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
+    <!-- 최종 정리안 2280:4290, 2280:3592, 2280:4320, 2280:5176, 2280:4881에서 확인한 값 -->
+    <color name="yakyeon_text">#FF17332C</color>
+    <color name="yakyeon_brand">#FF247C68</color>
+    <color name="yakyeon_muted">#FF6C827C</color>
+    <color name="yakyeon_primary">#FF37A98A</color>
+    <color name="yakyeon_line">#FFDCEAE5</color>
+    <color name="yakyeon_chip_line">#FFC3D9D1</color>
+    <color name="yakyeon_card_line">#FFE5EBE8</color>
+    <color name="yakyeon_mint">#FFEAF8F3</color>
+    <color name="yakyeon_placeholder">#FF9AACA7</color>
+    <color name="yakyeon_required">#FFF08E31</color>
+    <color name="yakyeon_sheet">#FFF4FBF8</color>
+    <!-- 2280:4170 홈, 2280:3592 가입 유형에서 확인 -->
+    <color name="yakyeon_deep">#FF12735E</color>
+    <color name="yakyeon_badge">#FF269768</color>
+    <color name="yakyeon_badge_bg">#FFEAF8F1</color>
+    <color name="yakyeon_warning_bg">#FFF7FBF9</color>
+    <color name="yakyeon_warning_line">#FFD7ECE4</color>
+    <color name="yakyeon_divider">#FFF0F5F3</color>
+    <color name="yakyeon_tab_inactive">#FF8C9491</color>
+    <!-- 2280:2683 동의 카드 스크롤 썸 -->
+    <color name="yakyeon_scroll_thumb">#FFABC7BC</color>
+    <!-- 2280:4809 알림 모달 -->
+    <color name="yakyeon_alarm_muted">#FF6B7A76</color>
+    <color name="yakyeon_wheel_muted">#FF5F746B</color>
+    <!-- 2280:3794 복용 내역 -->
+    <color name="yakyeon_history_done_bg">#FFE6F9F2</color>
+    <color name="yakyeon_history_done_text">#FF1B8C5E</color>
+    <color name="yakyeon_delayed_row">#FFFFFBF0</color>
+    <color name="yakyeon_delayed_badge">#FFFFF3CD</color>
+    <color name="yakyeon_delayed_text">#FFB07D00</color>
+    <color name="yakyeon_missed_row">#FFF8F5FF</color>
+    <color name="yakyeon_missed_badge">#FFF3E8FF</color>
+    <color name="yakyeon_missed_text">#FF7C3AED</color>
+    <color name="yakyeon_history_gap">#FFF0F7F4</color>
+    <!-- 2280:4563 일요일 -->
+    <color name="yakyeon_sunday">#FFB04040</color>
+    <color name="yakyeon_danger">#FFD64545</color>
+    <color name="yakyeon_danger_bg">#FFFDECEC</color>
+    <color name="yakyeon_warn_fill">#FFFFF8E6</color>
+    <color name="yakyeon_warn_line">#FFE8C97A</color>
+    <color name="yakyeon_option_fill">#FFF4FBF8</color>
+    <color name="yakyeon_withdraw_fill">#FFDFEAE6</color>
+    <color name="yakyeon_sheet_line">#FFEEF3F1</color>
+    <color name="yakyeon_canvas">#FFF5F8F7</color>
+    <color name="yakyeon_switch_off">#FFD5DEDA</color>
+    <color name="yakyeon_highlight">#FFD4EE86</color>
+    <color name="yakyeon_check_bg">#FFFFF1DE</color>
+    <color name="yakyeon_open_banner">#FFE3F6EF</color>
 </resources>

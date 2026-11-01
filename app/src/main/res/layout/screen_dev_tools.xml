@@ -1,0 +1,164 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/white"
+    android:fillViewport="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:paddingStart="18dp"
+        android:paddingTop="16dp"
+        android:paddingEnd="18dp"
+        android:paddingBottom="24dp">
+
+        <LinearLayout
+            android:id="@+id/panel_dev_fixtures"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:visibility="visible">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/home_dev_title"
+                android:textColor="@color/yakyeon_muted"
+                android:textSize="12sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:text="@string/home_dev_note"
+                android:textColor="@color/yakyeon_muted"
+                android:textSize="11sp" />
+
+            <TextView
+                android:id="@+id/button_dev_reset"
+                style="@style/Widget.Yakyeon.DevFixture"
+                android:text="@string/home_dev_reset" />
+
+            <TextView
+                android:id="@+id/button_dev_envelopes"
+                style="@style/Widget.Yakyeon.DevFixture"
+                android:text="@string/home_dev_envelopes" />
+
+            <TextView
+                android:id="@+id/button_dev_remaining"
+                style="@style/Widget.Yakyeon.DevFixture"
+                android:text="@string/home_dev_remaining" />
+
+            <TextView
+                android:id="@+id/button_dev_statuses"
+                style="@style/Widget.Yakyeon.DevFixture"
+                android:text="@string/home_dev_statuses" />
+
+            <TextView
+                android:id="@+id/button_dev_alarm"
+                style="@style/Widget.Yakyeon.DevFixture"
+                android:text="@string/home_dev_alarm" />
+
+            <TextView
+                android:id="@+id/button_dev_slots_some"
+                style="@style/Widget.Yakyeon.DevFixture"
+                android:text="@string/home_dev_slots_some" />
+
+            <TextView
+                android:id="@+id/button_dev_slots_full"
+                style="@style/Widget.Yakyeon.DevFixture"
+                android:text="@string/home_dev_slots_full" />
+
+            <TextView
+                android:id="@+id/button_dev_graph"
+                style="@style/Widget.Yakyeon.DevFixture"
+                android:text="@string/home_dev_graph_on" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:text="@string/home_dev_graph_title"
+                android:textColor="@color/yakyeon_muted"
+                android:textSize="12sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:text="@string/home_dev_graph_note"
+                android:textColor="@color/yakyeon_muted"
+                android:textSize="11sp" />
+
+            <TextView
+                android:id="@+id/button_dev_graph_clear"
+                style="@style/Widget.Yakyeon.DevFixture"
+                android:text="@string/home_dev_graph_clear" />
+
+            <TextView
+                android:id="@+id/button_dev_graph_one"
+                style="@style/Widget.Yakyeon.DevFixture"
+                android:text="@string/home_dev_graph_one" />
+
+            <TextView
+                android:id="@+id/button_dev_graph_three"
+                style="@style/Widget.Yakyeon.DevFixture"
+                android:text="@string/home_dev_graph_three" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:text="@string/home_dev_scenario_title"
+                android:textColor="@color/yakyeon_muted"
+                android:textSize="12sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:text="@string/home_dev_scenario_note"
+                android:textColor="@color/yakyeon_muted"
+                android:textSize="11sp" />
+
+            <TextView
+                android:id="@+id/button_dev_scenario_known"
+                style="@style/Widget.Yakyeon.DevFixture"
+                android:text="@string/home_dev_scenario_known" />
+
+            <TextView
+                android:id="@+id/button_dev_scenario_skin"
+                style="@style/Widget.Yakyeon.DevFixture"
+                android:text="@string/home_dev_scenario_skin" />
+
+            <TextView
+                android:id="@+id/button_dev_scenario_clear"
+                style="@style/Widget.Yakyeon.DevFixture"
+                android:text="@string/home_dev_scenario_clear" />
+
+            <TextView
+                android:id="@+id/button_dev_care_link"
+                style="@style/Widget.Yakyeon.DevFixture"
+                android:text="@string/home_dev_care_link" />
+
+            <TextView
+                android:id="@+id/button_dev_hardware_early"
+                style="@style/Widget.Yakyeon.DevFixture"
+                android:text="@string/home_dev_hardware_early" />
+        </LinearLayout>
+        <TextView
+            android:id="@+id/button_dev_list_sample"
+            style="@style/Widget.Yakyeon.DevFixture"
+            android:text="@string/med_dev_list" />
+
+        <TextView
+            android:id="@+id/button_dev_envelope_sample"
+            style="@style/Widget.Yakyeon.DevFixture"
+            android:text="@string/med_dev_envelope" />
+    </LinearLayout>
+</ScrollView>

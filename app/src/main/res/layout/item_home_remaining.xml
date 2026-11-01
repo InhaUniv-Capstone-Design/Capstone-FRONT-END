@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:gravity="center_vertical"
+    android:minHeight="54dp"
+    android:orientation="horizontal"
+    android:paddingTop="8dp"
+    android:paddingBottom="8dp">
+
+    <View
+        android:id="@+id/row_divider"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:visibility="gone" />
+
+    <ImageView
+        android:id="@+id/icon_round"
+        android:layout_width="38dp"
+        android:layout_height="38dp"
+        android:background="@drawable/yakyeon_icon_round"
+        android:contentDescription="@string/home_remaining_title"
+        android:padding="10dp"
+        android:src="@drawable/ic_yakyeon_sun" />
+
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="12dp"
+        android:layout_weight="1"
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/text_remaining_time"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textColor="@color/yakyeon_text"
+            android:textSize="14sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/text_remaining_place"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="3dp"
+            android:textColor="@color/yakyeon_muted"
+            android:textSize="12sp" />
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/text_remaining_status"
+        android:layout_width="wrap_content"
+        android:layout_height="28dp"
+        android:background="@drawable/yakyeon_planned_badge"
+        android:gravity="center"
+        android:minWidth="61dp"
+        android:paddingStart="10dp"
+        android:paddingEnd="10dp"
+        android:text="@string/med_status_scheduled"
+        android:textColor="@color/yakyeon_muted"
+        android:textSize="14sp"
+        android:textStyle="bold" />
+</LinearLayout>

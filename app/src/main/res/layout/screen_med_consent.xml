@@ -1,0 +1,237 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="304dp"
+    android:layout_height="wrap_content"
+    android:background="@drawable/yakyeon_popup_card"
+    android:elevation="10dp"
+    android:orientation="vertical"
+    android:padding="20dp">
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:lineSpacingExtra="8sp"
+        android:text="@string/med_consent_title"
+        android:textColor="@color/yakyeon_text"
+        android:textSize="18sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:lineSpacingExtra="6sp"
+        android:text="@string/med_consent_intro"
+        android:textColor="@color/yakyeon_muted"
+        android:textSize="12sp" />
+
+    <ScrollView
+        android:id="@+id/consent_scroll"
+        android:layout_width="match_parent"
+        android:layout_height="240dp"
+        android:layout_marginTop="12dp"
+        android:background="@drawable/yakyeon_consent_scroll_frame"
+        android:fadeScrollbars="false"
+        android:paddingTop="8dp"
+        android:paddingBottom="8dp"
+        android:scrollbarSize="3dp"
+        android:scrollbarThumbVertical="@drawable/yakyeon_med_scrollbar"
+        android:scrollbarTrackVertical="@drawable/yakyeon_med_scroll_track"
+        android:scrollbars="vertical">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:paddingEnd="8dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:background="@drawable/yakyeon_info_card"
+                android:orientation="vertical"
+                android:paddingTop="4dp"
+                android:paddingBottom="4dp">
+
+                <TextView
+                    style="@style/Widget.Yakyeon.ConsentLabel"
+                    android:text="@string/med_consent_purpose_label" />
+
+                <TextView
+                    style="@style/Widget.Yakyeon.ConsentValue"
+                    android:text="@string/med_consent_purpose" />
+
+                <TextView
+                    style="@style/Widget.Yakyeon.ConsentLabel"
+                    android:layout_marginTop="10dp"
+                    android:text="@string/med_consent_items_label" />
+
+                <TextView
+                    style="@style/Widget.Yakyeon.ConsentValue"
+                    android:text="@string/med_consent_items" />
+
+                <TextView
+                    style="@style/Widget.Yakyeon.ConsentLabel"
+                    android:layout_marginTop="10dp"
+                    android:text="@string/med_consent_period_label" />
+
+                <TextView
+                    style="@style/Widget.Yakyeon.ConsentValue"
+                    android:text="@string/med_consent_period" />
+
+                <TextView
+                    style="@style/Widget.Yakyeon.ConsentLabel"
+                    android:layout_marginTop="10dp"
+                    android:text="@string/med_consent_photo_label" />
+
+                <TextView
+                    style="@style/Widget.Yakyeon.ConsentValue"
+                    android:text="@string/med_consent_photo" />
+
+                <TextView
+                    style="@style/Widget.Yakyeon.ConsentLabel"
+                    android:layout_marginTop="10dp"
+                    android:text="@string/med_consent_refusal_label" />
+
+                <TextView
+                    style="@style/Widget.Yakyeon.ConsentValue"
+                    android:text="@string/med_consent_refusal" />
+            </LinearLayout>
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="14dp"
+                android:text="@string/med_consent_photo_heading"
+                android:textColor="@color/yakyeon_text"
+                android:textSize="12sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="5dp"
+                android:lineSpacingExtra="6sp"
+                android:text="@string/med_consent_photo_1"
+                android:textColor="@color/yakyeon_text"
+                android:textSize="12sp" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="5dp"
+                android:lineSpacingExtra="6sp"
+                android:text="@string/med_consent_photo_2"
+                android:textColor="@color/yakyeon_text"
+                android:textSize="12sp" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="5dp"
+                android:lineSpacingExtra="6sp"
+                android:text="@string/med_consent_photo_3"
+                android:textColor="@color/yakyeon_text"
+                android:textSize="12sp" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="14dp"
+                android:text="@string/med_consent_notice_heading"
+                android:textColor="@color/yakyeon_text"
+                android:textSize="12sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="5dp"
+                android:lineSpacingExtra="6sp"
+                android:text="@string/med_consent_notice_1"
+                android:textColor="@color/yakyeon_text"
+                android:textSize="12sp" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="5dp"
+                android:lineSpacingExtra="6sp"
+                android:text="@string/med_consent_notice_2"
+                android:textColor="@color/yakyeon_text"
+                android:textSize="12sp" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="5dp"
+                android:lineSpacingExtra="6sp"
+                android:text="@string/med_consent_notice_3"
+                android:textColor="@color/yakyeon_text"
+                android:textSize="12sp" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="5dp"
+                android:lineSpacingExtra="6sp"
+                android:text="@string/med_consent_notice_4"
+                android:textColor="@color/yakyeon_text"
+                android:textSize="12sp" />
+        </LinearLayout>
+    </ScrollView>
+
+    <CheckBox
+        android:id="@+id/check_med_collection"
+        style="@style/Widget.Yakyeon.CheckBox"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:minHeight="40dp"
+        android:text="@string/med_consent_collection"
+        android:textSize="12sp" />
+
+    <CheckBox
+        android:id="@+id/check_med_notice"
+        style="@style/Widget.Yakyeon.CheckBox"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:minHeight="40dp"
+        android:text="@string/med_consent_notice"
+        android:textSize="12sp" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:orientation="horizontal">
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/button_med_consent_cancel"
+            android:layout_width="62dp"
+            android:layout_height="48dp"
+            android:background="@drawable/yakyeon_quiet_button"
+            android:insetTop="0dp"
+            android:insetBottom="0dp"
+            android:minWidth="0dp"
+            android:minHeight="0dp"
+            android:padding="0dp"
+            android:text="@string/action_cancel"
+            android:textColor="@color/yakyeon_muted"
+            android:textSize="13sp"
+            android:textStyle="bold"
+            app:backgroundTint="@null" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/button_med_consent_next"
+            style="@style/Widget.Yakyeon.Button.Primary"
+            android:layout_width="0dp"
+            android:layout_height="48dp"
+            android:layout_marginStart="8dp"
+            android:layout_weight="1"
+            android:text="@string/med_consent_proceed"
+            android:textSize="13sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+</LinearLayout>
