@@ -554,10 +554,6 @@ public final class MedScreens {
         }
         if (host.usesServerRecords()) {
             HomeRegistration.Prepared prepared = HomeRegistration.prepare(store.draft());
-            if (prepared.block == HomeRegistration.Block.BEDTIME) {
-                host.showMessage(activity.getString(R.string.med_bedtime_server));
-                return;
-            }
             switch (MedicationRules.validate(store.draft())) {
                 case NOT_CONFIRMED:
                     showNeedConfirm(activity);
@@ -1841,7 +1837,7 @@ public final class MedScreens {
         TextView empty = root.findViewById(R.id.text_alarm_empty);
         int roundCount = 0;
         for (DoseRound round : DoseRound.values()) {
-            if (round == DoseRound.BEDTIME || !selected.contains(round)) {
+            if (!selected.contains(round)) {
                 continue;
             }
             roundCount++;
@@ -1856,6 +1852,10 @@ public final class MedScreens {
         dialog.setCancelable(true);
         root.findViewById(R.id.button_alarm_save).setOnClickListener(v -> {
             if (!any) {
+                return;
+            }
+            if (MedicationRules.checkAlarmTimes(selected, minutes) != MedicationRules.TimeCheck.OK) {
+                ShortMessage.show(root, activity.getString(R.string.med_time_rule));
                 return;
             }
             dialog.dismiss();
@@ -1947,8 +1947,11 @@ public final class MedScreens {
         for (HomeContracts.Medication medication : prescription.medications) {
             View row = LayoutInflater.from(activity).inflate(R.layout.item_med_list_medicine, medicines, false);
             ((TextView) row.findViewById(R.id.text_medicine_name)).setText(displayName(activity, medication.drugName));
+            int times = medication.prn
+                    ? medication.timingSlots.size()
+                    : (int) medication.timesPerDay;
             ((TextView) row.findViewById(R.id.text_medicine_frequency)).setText(
-                    activity.getString(R.string.med_frequency, medication.timingSlots.size())
+                    activity.getString(R.string.med_frequency, times)
             );
             if (!ended && writes && !HomeContracts.STATUS_ENDED.equals(medication.status)) {
                 row.setOnClickListener(v -> ConfirmDialog.show(

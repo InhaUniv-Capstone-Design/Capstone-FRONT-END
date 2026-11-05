@@ -55,7 +55,7 @@ public class ClockTimeTest {
     }
 
     @Test
-    public void fourHourGapWrapsAcrossMidnightAndKeepsBedtimeExempt() {
+    public void fourHourGapFollowsSlotOrderAndIncludesBedtime() {
         Map<DoseRound, Integer> minutes = new EnumMap<>(DoseRound.class);
         minutes.put(DoseRound.MORNING, ClockTime.of24(8, 0));
         minutes.put(DoseRound.LUNCH, ClockTime.of24(12, 0));
@@ -70,14 +70,14 @@ public class ClockTimeTest {
                 MedicationRules.checkAlarmTimes(EnumSet.of(DoseRound.MORNING, DoseRound.LUNCH), minutes)
         );
 
-        minutes.put(DoseRound.EVENING, ClockTime.of24(22, 0));
-        minutes.put(DoseRound.MORNING, ClockTime.of24(2, 0));
+        minutes.put(DoseRound.EVENING, ClockTime.of24(20, 0));
+        minutes.put(DoseRound.MORNING, ClockTime.of24(8, 0));
         assertEquals(
                 MedicationRules.TimeCheck.OK,
                 MedicationRules.checkAlarmTimes(EnumSet.of(DoseRound.MORNING, DoseRound.EVENING), minutes)
         );
 
-        minutes.put(DoseRound.EVENING, ClockTime.of24(23, 0));
+        minutes.put(DoseRound.EVENING, ClockTime.of24(21, 0));
         assertEquals(
                 MedicationRules.TimeCheck.TOO_CLOSE,
                 MedicationRules.checkAlarmTimes(EnumSet.of(DoseRound.MORNING, DoseRound.EVENING), minutes)
@@ -93,8 +93,18 @@ public class ClockTimeTest {
         minutes.put(DoseRound.MORNING, ClockTime.of24(8, 0));
         minutes.put(DoseRound.BEDTIME, ClockTime.of24(8, 10));
         assertEquals(
+                MedicationRules.TimeCheck.TOO_CLOSE,
+                MedicationRules.checkAlarmTimes(EnumSet.of(DoseRound.MORNING, DoseRound.BEDTIME), minutes)
+        );
+        minutes.put(DoseRound.BEDTIME, ClockTime.of24(22, 0));
+        assertEquals(
                 MedicationRules.TimeCheck.OK,
                 MedicationRules.checkAlarmTimes(EnumSet.of(DoseRound.MORNING, DoseRound.BEDTIME), minutes)
+        );
+        minutes.put(DoseRound.BEDTIME, ClockTime.of24(23, 59));
+        assertEquals(
+                MedicationRules.TimeCheck.OK,
+                MedicationRules.checkAlarmTimes(EnumSet.of(DoseRound.BEDTIME), minutes)
         );
     }
 }

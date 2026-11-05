@@ -19,6 +19,9 @@ public final class ApiFailure {
         if (ApiCodes.endsSession(code)) {
             return Kind.SESSION;
         }
+        if (ApiCodes.LOGIN_LOCKED.equals(code)) {
+            return Kind.OTHER;
+        }
         if (ApiCodes.INVALID_CREDENTIALS.equals(code)
                 || ApiCodes.CURRENT_PASSWORD_MISMATCH.equals(code)
                 || ApiCodes.UNAUTHENTICATED.equals(code)) {

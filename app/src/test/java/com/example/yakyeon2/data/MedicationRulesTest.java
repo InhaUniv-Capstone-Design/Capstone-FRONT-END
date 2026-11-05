@@ -19,12 +19,12 @@ public class MedicationRulesTest {
     private static final LocalDate DAY = LocalDate.of(2026, 10, 8);
 
     @Test
-    public void mealTimesMustBeAtLeastFourHoursAndBedtimeIsExempt() {
+    public void mealTimesMustBeAtLeastFourHoursIncludingBedtime() {
         Map<DoseRound, Integer> minutes = new EnumMap<>(DoseRound.class);
         minutes.put(DoseRound.MORNING, 8 * 60);
         minutes.put(DoseRound.LUNCH, 12 * 60);
         minutes.put(DoseRound.EVENING, 18 * 60);
-        minutes.put(DoseRound.BEDTIME, 18 * 60 + 30);
+        minutes.put(DoseRound.BEDTIME, 22 * 60);
 
         assertEquals(
                 MedicationRules.TimeCheck.OK,
@@ -198,7 +198,7 @@ public class MedicationRulesTest {
         medicine.setEnd(DAY);
         medicine.setConfirmed(true);
         draft.alarmMinutes().put(DoseRound.MORNING, 8 * 60);
-        draft.alarmMinutes().put(DoseRound.BEDTIME, 8 * 60 + 10);
+        draft.alarmMinutes().put(DoseRound.BEDTIME, 22 * 60);
         draft.setSlotIndex(0);
 
         assertEquals(MedicationRules.SaveBlock.OK, store.commit(ZONE));
@@ -412,7 +412,7 @@ public class MedicationRulesTest {
     }
 
     @Test
-    public void alarmEditKeepsFourHourRuleAndAllowsExactGapWithBedtimeExempt() {
+    public void alarmEditKeepsFourHourRuleIncludingBedtime() {
         LocalDate day = LocalDate.of(2026, 10, 8);
         long registeredAt = day.atStartOfDay(ZONE).toInstant().toEpochMilli();
         MedicationStore store = committedStore(day, day, registeredAt);
@@ -424,10 +424,10 @@ public class MedicationRulesTest {
         store.alarmEditMinutes().put(DoseRound.MORNING, 8 * 60);
         store.alarmEditMinutes().put(DoseRound.LUNCH, 12 * 60);
         store.alarmEditMinutes().put(DoseRound.EVENING, 16 * 60);
-        store.alarmEditMinutes().put(DoseRound.BEDTIME, 8 * 60);
+        store.alarmEditMinutes().put(DoseRound.BEDTIME, 20 * 60);
         assertTrue(store.saveAlarmEdit(ZONE, now));
         assertEquals(Integer.valueOf(12 * 60), envelope.alarmMinutes().get(DoseRound.LUNCH));
-        assertEquals(Integer.valueOf(8 * 60), envelope.alarmMinutes().get(DoseRound.BEDTIME));
+        assertEquals(Integer.valueOf(20 * 60), envelope.alarmMinutes().get(DoseRound.BEDTIME));
 
         assertTrue(store.beginAlarmEdit(envelope.getId()));
         store.alarmEditMinutes().put(DoseRound.LUNCH, 11 * 60 + 59);

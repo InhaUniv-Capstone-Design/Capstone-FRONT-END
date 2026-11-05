@@ -175,7 +175,8 @@ public final class MainScreens {
             HomeContracts.Section<java.util.List<HomeContracts.Dose>> todayDoses,
             Host host,
             boolean debuggable,
-            String userName
+            String userName,
+            boolean awaitingPatientLink
     ) {
         View root = LayoutInflater.from(activity).inflate(R.layout.screen_home, null);
         paintGreeting(activity, root, userName);
@@ -198,6 +199,14 @@ public final class MainScreens {
                 host.openDetail(DEV_TOOLS);
                 return true;
             });
+        }
+        if (awaitingPatientLink) {
+            root.findViewById(R.id.text_home_subtitle).setVisibility(View.GONE);
+            root.findViewById(R.id.card_today_entry).setVisibility(View.GONE);
+            root.findViewById(R.id.card_interaction).setVisibility(View.GONE);
+            root.findViewById(R.id.card_remaining).setVisibility(View.GONE);
+            root.findViewById(R.id.panel_patient_wait).setVisibility(View.VISIBLE);
+            return root;
         }
         if (view != CareView.READY) {
             String message = view == CareView.LOADING
@@ -222,6 +231,7 @@ public final class MainScreens {
             paintServerSlot(root, R.id.slot_morning, R.id.icon_morning, R.drawable.ic_yakyeon_sun, null);
             paintServerSlot(root, R.id.slot_lunch, R.id.icon_lunch, R.drawable.ic_yakyeon_sun, null);
             paintServerSlot(root, R.id.slot_evening, R.id.icon_evening, R.drawable.ic_yakyeon_moon, null);
+            paintServerSlot(root, R.id.slot_bedtime, R.id.icon_bedtime, R.drawable.ic_yakyeon_moon, null);
         } else {
             HomeContracts.HomeSummary value = summary.value;
             progress.setText(activity.getString(R.string.home_progress, value.done, value.total));
@@ -235,12 +245,8 @@ public final class MainScreens {
                     HomeContracts.slotState(value.slots, HomeContracts.SLOT_LUNCH));
             paintServerSlot(root, R.id.slot_evening, R.id.icon_evening, R.drawable.ic_yakyeon_moon,
                     HomeContracts.slotState(value.slots, HomeContracts.SLOT_DINNER));
-            String bedtime = HomeContracts.slotState(value.slots, HomeContracts.SLOT_BEDTIME);
-            paintServerSlot(root, R.id.slot_bedtime, R.id.icon_bedtime, R.drawable.ic_yakyeon_moon, bedtime);
-            TextView bedtimeLabel = root.findViewById(R.id.text_slot_bedtime);
-            if (bedtime == null) {
-                bedtimeLabel.setText(R.string.home_bedtime_unsupported);
-            }
+            paintServerSlot(root, R.id.slot_bedtime, R.id.icon_bedtime, R.drawable.ic_yakyeon_moon,
+                    HomeContracts.slotState(value.slots, HomeContracts.SLOT_BEDTIME));
         }
         if (activeMeds == null || activeMeds.kind != HomeContracts.Section.Kind.READY || activeMeds.value == null) {
             taking.setText(activeMeds == null || activeMeds.message == null

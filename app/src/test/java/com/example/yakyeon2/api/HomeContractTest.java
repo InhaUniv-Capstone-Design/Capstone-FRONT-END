@@ -56,6 +56,32 @@ public class HomeContractTest {
                         + "}"
         ));
         Assert.assertNull(empty.nextDose);
+
+        HomeContracts.HomeSummary four = HomeContracts.readHomeSummary(new JSONObject(
+                "{"
+                        + "\"date\":\"2026-10-27\","
+                        + "\"total\":4,\"done\":1,\"normal\":1,\"delayed\":0,\"missed\":0,\"pending\":2,"
+                        + "\"slots\":["
+                        + "{\"timing_slot\":\"MORNING\",\"state\":\"DONE\"},"
+                        + "{\"timing_slot\":\"LUNCH\",\"state\":\"PENDING\"},"
+                        + "{\"timing_slot\":\"DINNER\",\"state\":\"NONE\"},"
+                        + "{\"timing_slot\":\"BEDTIME\",\"state\":\"NONE\"}"
+                        + "],"
+                        + "\"next_dose\":{"
+                        + "\"scheduled_dose_id\":9,"
+                        + "\"hospital_name\":\"병원\","
+                        + "\"timing_slot\":\"BEDTIME\","
+                        + "\"scheduled_at\":\"2026-10-27T22:00:00+09:00\","
+                        + "\"status\":\"PENDING\","
+                        + "\"medications\":[{\"medication_id\":3,\"drug_name\":\"취침약\"}]"
+                        + "}"
+                        + "}"
+        ));
+        Assert.assertEquals(4L, four.total);
+        Assert.assertEquals(1L, four.done);
+        Assert.assertEquals(2L, four.pending);
+        Assert.assertEquals(HomeContracts.STATE_NONE, HomeContracts.slotState(four.slots, HomeContracts.SLOT_BEDTIME));
+        Assert.assertEquals(HomeContracts.SLOT_BEDTIME, four.nextDose.timingSlot);
     }
 
     @Test
@@ -265,43 +291,65 @@ public class HomeContractTest {
     }
 
     @Test
-    public void bedtimeIsNotSentAndHalfDoseIsNumeric() throws Exception {
-        EnvelopeDraft draft = draft();
-        draft.medicines().get(0).rounds().add(DoseRound.BEDTIME);
-        HomeRegistration.Prepared blocked = HomeRegistration.prepare(draft);
-        Assert.assertEquals(HomeRegistration.Block.BEDTIME, blocked.block);
-        Assert.assertNull(blocked.prescription);
-
+    public void bedtimeIsSentInOrderAndScheduleKeepsServerWindows() throws Exception {
         EnvelopeDraft ready = draft();
         MedicineDraft medicine = ready.medicines().get(0);
-        medicine.rounds().add(DoseRound.MORNING);
+        medicine.rounds().add(DoseRound.BEDTIME);
         medicine.rounds().add(DoseRound.EVENING);
+        medicine.rounds().add(DoseRound.MORNING);
         medicine.setAmount(DoseAmount.TABLET_HALF);
         medicine.timings().add(DoseTiming.AFTER_MEAL_30);
         medicine.setConfirmed(true);
         ready.alarmMinutes().put(DoseRound.MORNING, 8 * 60);
-        ready.alarmMinutes().put(DoseRound.EVENING, 19 * 60);
+        ready.alarmMinutes().put(DoseRound.EVENING, 16 * 60);
+        ready.alarmMinutes().put(DoseRound.BEDTIME, 22 * 60);
         ready.setSlotIndex(0);
         HomeRegistration.Prepared prepared = HomeRegistration.prepare(ready);
         Assert.assertEquals(HomeRegistration.Block.NONE, prepared.block);
         Assert.assertEquals(1, prepared.compartmentNo.intValue());
         JSONArray medications = prepared.prescription.getJSONArray("medications");
         JSONArray slots = medications.getJSONObject(0).getJSONArray("timing_slots");
+        Assert.assertEquals(3, slots.length());
         Assert.assertEquals("MORNING", slots.getString(0));
         Assert.assertEquals("DINNER", slots.getString(1));
+        Assert.assertEquals("BEDTIME", slots.getString(2));
+        Assert.assertEquals(3, medications.getJSONObject(0).getInt("times_per_day"));
         Assert.assertEquals(0.5d, medications.getJSONObject(0).getDouble("dose_per_intake"), 0.001d);
         Assert.assertEquals("MANUAL", prepared.prescription.getString("source"));
-        Assert.assertEquals("08:00", prepared.schedule.getJSONArray("settings").getJSONObject(0).getString("dose_time"));
-        Assert.assertEquals("19:00", prepared.schedule.getJSONArray("settings").getJSONObject(1).getString("dose_time"));
+        JSONArray settings = prepared.schedule.getJSONArray("settings");
+        Assert.assertEquals("08:00", settings.getJSONObject(0).getString("dose_time"));
+        Assert.assertEquals("16:00", settings.getJSONObject(1).getString("dose_time"));
+        Assert.assertEquals("BEDTIME", settings.getJSONObject(2).getString("timing_slot"));
+        Assert.assertEquals("22:00", settings.getJSONObject(2).getString("dose_time"));
+        Assert.assertFalse(prepared.schedule.toString().contains("normal_window_min"));
+        Assert.assertFalse(prepared.schedule.toString().contains("close_after_min"));
+
+        JSONObject bedtime = HomeContracts.scheduleBody(
+                java.util.Collections.singletonList(HomeContracts.SLOT_BEDTIME),
+                java.util.Collections.singletonList("23:59")
+        );
+        Assert.assertEquals("23:59", bedtime.getJSONArray("settings").getJSONObject(0).getString("dose_time"));
         try {
             HomeContracts.scheduleBody(
-                    java.util.Collections.singletonList(HomeContracts.SLOT_BEDTIME),
-                    java.util.Collections.singletonList("22:00")
+                    java.util.Collections.singletonList(HomeContracts.SLOT_DINNER),
+                    java.util.Collections.singletonList("21:00")
             );
             Assert.fail();
         } catch (ApiException exception) {
             Assert.assertFalse(exception.network());
         }
+
+        HomeContracts.ScheduleSettings read = HomeContracts.readSchedule(new JSONObject(
+                "{"
+                        + "\"prescription_id\":4,"
+                        + "\"settings\":["
+                        + "{\"timing_slot\":\"BEDTIME\",\"dose_time\":\"23:30\",\"normal_window_min\":29,\"close_after_min\":30}"
+                        + "]"
+                        + "}"
+        ));
+        Assert.assertEquals(29L, read.settings.get(0).normalWindowMin);
+        Assert.assertEquals(30L, read.settings.get(0).closeAfterMin);
+        Assert.assertEquals("23:30", read.settings.get(0).doseTime);
     }
 
     @Test

@@ -13,6 +13,8 @@ public final class MedicationRules {
 
     public static final long THREE_HOURS_MS = 3L * 60L * 60L * 1000L;
     public static final int FOUR_HOURS_MINUTES = 4 * 60;
+    public static final int MEAL_LATEST_MINUTE = 20 * 60 + 59;
+    public static final int BEDTIME_LATEST_MINUTE = 23 * 60 + 59;
     public static final int HISTORY_DEFAULT_DAYS = 14;
     public static final int HISTORY_MAX_DAYS = 365;
     public static final int MINUTES_PER_DAY = 24 * 60;
@@ -145,7 +147,13 @@ public final class MedicationRules {
     }
 
     public static TimeCheck checkAlarmTimes(Set<DoseRound> required, Map<DoseRound, Integer> minutes) {
-        List<Integer> meals = new ArrayList<>();
+        if (required == null || required.isEmpty()) {
+            return TimeCheck.OK;
+        }
+        if (minutes == null) {
+            return TimeCheck.MISSING;
+        }
+        Integer previous = null;
         for (DoseRound round : DoseRound.values()) {
             if (!required.contains(round)) {
                 continue;
@@ -154,16 +162,14 @@ public final class MedicationRules {
             if (value == null || value < 0 || value >= MINUTES_PER_DAY) {
                 return TimeCheck.MISSING;
             }
-            if (round != DoseRound.BEDTIME) {
-                meals.add(value);
+            int latest = round == DoseRound.BEDTIME ? BEDTIME_LATEST_MINUTE : MEAL_LATEST_MINUTE;
+            if (value > latest) {
+                return TimeCheck.TOO_CLOSE;
             }
-        }
-        for (int i = 0; i < meals.size(); i++) {
-            for (int j = i + 1; j < meals.size(); j++) {
-                if (circularGapMinutes(meals.get(i), meals.get(j)) < FOUR_HOURS_MINUTES) {
-                    return TimeCheck.TOO_CLOSE;
-                }
+            if (previous != null && value - previous < FOUR_HOURS_MINUTES) {
+                return TimeCheck.TOO_CLOSE;
             }
+            previous = value;
         }
         return TimeCheck.OK;
     }

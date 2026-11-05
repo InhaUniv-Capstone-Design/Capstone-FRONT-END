@@ -16,6 +16,12 @@ public class AuthValidationTest {
         assertEquals(AuthValidation.LoginCheck.EMPTY_ID, AuthValidation.login("  ", VALID_PASSWORD));
         assertEquals(AuthValidation.LoginCheck.EMPTY_PASSWORD, AuthValidation.login(VALID_ID, ""));
         assertEquals(AuthValidation.LoginCheck.NOT_CONNECTED, AuthValidation.login(VALID_ID, VALID_PASSWORD));
+        assertEquals(AuthValidation.LoginCheck.ID_TOO_LONG, AuthValidation.login("a".repeat(101), VALID_PASSWORD));
+        assertEquals(
+                AuthValidation.LoginCheck.PASSWORD_TOO_LONG,
+                AuthValidation.login(VALID_ID, "p".repeat(129))
+        );
+        assertEquals(AuthValidation.LoginCheck.NOT_CONNECTED, AuthValidation.login("a".repeat(100), "p".repeat(128)));
     }
 
     @Test

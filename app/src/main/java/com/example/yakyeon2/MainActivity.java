@@ -44,6 +44,7 @@ import com.example.yakyeon2.auth.AuthScreens;
 import com.example.yakyeon2.auth.AuthValidation;
 import com.example.yakyeon2.auth.SignupConsent;
 import com.example.yakyeon2.data.AccountRoles;
+import com.example.yakyeon2.data.MedicationRules;
 import com.example.yakyeon2.data.AccountType;
 import com.example.yakyeon2.data.AuthTokenStore;
 import com.example.yakyeon2.data.ClinicalShareOptions;
@@ -288,6 +289,12 @@ public class MainActivity extends AppCompatActivity
                 break;
             case EMPTY_PASSWORD:
                 ShortMessage.show(screenContainer, getString(R.string.auth_need_password));
+                break;
+            case ID_TOO_LONG:
+                ShortMessage.show(screenContainer, getString(R.string.auth_login_id_length));
+                break;
+            case PASSWORD_TOO_LONG:
+                ShortMessage.show(screenContainer, getString(R.string.auth_login_password_length));
                 break;
             case NOT_CONNECTED:
                 submitLogin(id.trim(), password);
@@ -910,7 +917,8 @@ public class MainActivity extends AppCompatActivity
                     homeToday,
                     this,
                     debuggable(),
-                    signedInName()
+                    signedInName(),
+                    awaitingPatientLink()
             );
         }
         MedicationStore store = YakyeonRepositoryProvider.get().medications();
@@ -1638,6 +1646,9 @@ public class MainActivity extends AppCompatActivity
     }
 
     private String messageFor(ApiException exception) {
+        if (ApiCodes.LOGIN_LOCKED.equals(exception.code())) {
+            return getString(R.string.auth_login_locked);
+        }
         ApiFailure.Kind kind = exception.failure();
         if (kind == ApiFailure.Kind.NETWORK) {
             return getString(R.string.api_network_error);
@@ -1650,6 +1661,11 @@ public class MainActivity extends AppCompatActivity
         }
         if (kind == ApiFailure.Kind.SERVER) {
             return textOr(exception.getMessage(), getString(R.string.api_server_error));
+        }
+        if (ApiMessages.prefersServerText(exception.code())
+                && exception.getMessage() != null
+                && !exception.getMessage().isEmpty()) {
+            return exception.getMessage();
         }
         String fallback = ApiMessages.fallback(exception.code());
         if (exception.getMessage() != null && !exception.getMessage().isEmpty()) {
@@ -2240,6 +2256,9 @@ public class MainActivity extends AppCompatActivity
     }
 
     private String careMessage(ApiException exception) {
+        if (ApiCodes.LOGIN_LOCKED.equals(exception.code())) {
+            return getString(R.string.auth_login_locked);
+        }
         ApiFailure.Kind kind = exception.failure();
         if (kind == ApiFailure.Kind.NETWORK) {
             return getString(R.string.api_network_error);
@@ -2255,6 +2274,11 @@ public class MainActivity extends AppCompatActivity
         }
         if (ApiCodes.SHARE_NOT_GRANTED.equals(exception.code())) {
             return getString(R.string.care_share_withheld);
+        }
+        if (ApiMessages.prefersServerText(exception.code())
+                && exception.getMessage() != null
+                && !exception.getMessage().isEmpty()) {
+            return exception.getMessage();
         }
         String fallback = ApiMessages.fallback(exception.code());
         if (fallback != null) {
@@ -2697,6 +2721,9 @@ public class MainActivity extends AppCompatActivity
                     }
                     showGuardians = show;
                     careReady = true;
+                    if (!patientAccount) {
+                        reloadHomeAfterLinkSync();
+                    }
                     if (MainScreens.LINK.equals(navigator.currentScreen())) {
                         refresh();
                     }
@@ -3131,8 +3158,9 @@ public class MainActivity extends AppCompatActivity
         }
         MedicationStore store = YakyeonRepositoryProvider.get().medications();
         HomeRegistration.Prepared prepared = HomeRegistration.prepare(store.draft());
-        if (prepared.block == HomeRegistration.Block.BEDTIME) {
-            showMessage(getString(R.string.med_bedtime_server));
+        MedicationRules.SaveBlock times = MedicationRules.validate(store.draft());
+        if (times == MedicationRules.SaveBlock.MISSING_TIME || times == MedicationRules.SaveBlock.TOO_CLOSE) {
+            showMessage(getString(R.string.med_time_rule));
             return;
         }
         if (prepared.block != HomeRegistration.Block.NONE || prepared.prescription == null) {
@@ -3301,7 +3329,7 @@ public class MainActivity extends AppCompatActivity
                         java.util.EnumSet.noneOf(com.example.yakyeon2.data.DoseRound.class);
                 for (HomeContracts.ScheduleSetting setting : settings.settings) {
                     com.example.yakyeon2.data.DoseRound round = roundForSlot(setting.timingSlot);
-                    if (round == null || com.example.yakyeon2.data.DoseRound.BEDTIME == round) {
+                    if (round == null) {
                         continue;
                     }
                     String[] parts = setting.doseTime.split(":");
@@ -3455,7 +3483,8 @@ public class MainActivity extends AppCompatActivity
         addSchedule(slots, times, minutes, selected, com.example.yakyeon2.data.DoseRound.MORNING, HomeContracts.SLOT_MORNING);
         addSchedule(slots, times, minutes, selected, com.example.yakyeon2.data.DoseRound.LUNCH, HomeContracts.SLOT_LUNCH);
         addSchedule(slots, times, minutes, selected, com.example.yakyeon2.data.DoseRound.EVENING, HomeContracts.SLOT_DINNER);
-        if (slots.isEmpty()) {
+        addSchedule(slots, times, minutes, selected, com.example.yakyeon2.data.DoseRound.BEDTIME, HomeContracts.SLOT_BEDTIME);
+        if (slots.isEmpty() || slots.size() > 4) {
             showMessage(getString(R.string.med_required));
             return;
         }
@@ -3463,7 +3492,7 @@ public class MainActivity extends AppCompatActivity
         try {
             body = HomeContracts.scheduleBody(slots, times);
         } catch (ApiException exception) {
-            showMessage(getString(R.string.med_bedtime_server));
+            showMessage(getString(R.string.med_time_rule));
             return;
         }
         runHomeWrite(() -> {
@@ -3519,6 +3548,16 @@ public class MainActivity extends AppCompatActivity
         clearProgress();
         if (message != null && !message.isEmpty()) {
             showMessage(message);
+        }
+    }
+
+    private void reloadHomeAfterLinkSync() {
+        scheduleLoaded = false;
+        historyLoaded = false;
+        homeArmed = false;
+        ensureHomeLoaded();
+        if (needsServerHome(navigator.currentScreen())) {
+            refresh();
         }
     }
 
@@ -3881,6 +3920,12 @@ public class MainActivity extends AppCompatActivity
         if (MedScreen.HISTORY.equals(navigator.currentScreen())) {
             refresh();
         }
+    }
+
+    private boolean awaitingPatientLink() {
+        return homeView == MainScreens.CareView.BLOCKED
+                && AccountRoles.GUARDIAN.equals(AuthTokenStore.accountType(this))
+                && getString(R.string.settings_patient_none).equals(homeMessage);
     }
 
     private PatientGate gatePatients() throws ApiException {

@@ -19,7 +19,6 @@ public final class HomeRegistration {
 
     public enum Block {
         NONE,
-        BEDTIME,
         INCOMPLETE
     }
 
@@ -46,11 +45,6 @@ public final class HomeRegistration {
         }
         if (draft.medicines().isEmpty()) {
             return blocked(Block.INCOMPLETE);
-        }
-        for (MedicineDraft medicine : draft.medicines()) {
-            if (medicine.rounds().contains(DoseRound.BEDTIME)) {
-                return blocked(Block.BEDTIME);
-            }
         }
         try {
             JSONArray medications = new JSONArray();
@@ -85,7 +79,10 @@ public final class HomeRegistration {
                     if (medicine.rounds().contains(DoseRound.EVENING)) {
                         slots.add(HomeContracts.SLOT_DINNER);
                     }
-                    if (slots.isEmpty()) {
+                    if (medicine.rounds().contains(DoseRound.BEDTIME)) {
+                        slots.add(HomeContracts.SLOT_BEDTIME);
+                    }
+                    if (slots.isEmpty() || slots.size() > 4) {
                         return blocked(Block.INCOMPLETE);
                     }
                     for (String slot : slots) {
@@ -168,9 +165,18 @@ public final class HomeRegistration {
     }
 
     private static Integer minutesFor(EnvelopeDraft draft, String slot) {
-        DoseRound round = HomeContracts.SLOT_MORNING.equals(slot)
-                ? DoseRound.MORNING
-                : HomeContracts.SLOT_LUNCH.equals(slot) ? DoseRound.LUNCH : DoseRound.EVENING;
+        DoseRound round;
+        if (HomeContracts.SLOT_MORNING.equals(slot)) {
+            round = DoseRound.MORNING;
+        } else if (HomeContracts.SLOT_LUNCH.equals(slot)) {
+            round = DoseRound.LUNCH;
+        } else if (HomeContracts.SLOT_DINNER.equals(slot)) {
+            round = DoseRound.EVENING;
+        } else if (HomeContracts.SLOT_BEDTIME.equals(slot)) {
+            round = DoseRound.BEDTIME;
+        } else {
+            return null;
+        }
         return draft.alarmMinutes().get(round);
     }
 

@@ -4,9 +4,14 @@ import com.example.yakyeon2.api.AuthContracts;
 
 public final class AuthValidation {
 
+    public static final int LOGIN_ID_MAX = 100;
+    public static final int LOGIN_PASSWORD_MAX = 128;
+
     public enum LoginCheck {
         EMPTY_ID,
         EMPTY_PASSWORD,
+        ID_TOO_LONG,
+        PASSWORD_TOO_LONG,
         NOT_CONNECTED
     }
 
@@ -32,8 +37,14 @@ public final class AuthValidation {
         if (isBlank(id)) {
             return LoginCheck.EMPTY_ID;
         }
+        if (id.trim().length() > LOGIN_ID_MAX) {
+            return LoginCheck.ID_TOO_LONG;
+        }
         if (password == null || password.isEmpty()) {
             return LoginCheck.EMPTY_PASSWORD;
+        }
+        if (password.length() > LOGIN_PASSWORD_MAX) {
+            return LoginCheck.PASSWORD_TOO_LONG;
         }
         return LoginCheck.NOT_CONNECTED;
     }

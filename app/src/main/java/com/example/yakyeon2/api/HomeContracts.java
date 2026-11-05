@@ -512,8 +512,10 @@ public final class HomeContracts {
             return DoseFollowUp.NONE;
         }
         OffsetDateTime close = parseOffset(dose.closeAt);
-        Instant end = close == null ? start.plus(3, ChronoUnit.HOURS) : close.toInstant();
-        if (now.isAfter(end)) {
+        if (close == null) {
+            return DoseFollowUp.NONE;
+        }
+        if (now.isAfter(close.toInstant())) {
             return DoseFollowUp.NONE;
         }
         return DoseFollowUp.ASK;
@@ -579,24 +581,33 @@ public final class HomeContracts {
     }
 
     public static JSONObject scheduleBody(List<String> slots, List<String> times) throws ApiException {
-        if (slots == null || times == null || slots.size() != times.size() || slots.isEmpty()) {
+        if (slots == null || times == null || slots.size() != times.size() || slots.isEmpty() || slots.size() > 4) {
             throw ApiException.local();
         }
         JSONArray settings = new JSONArray();
         try {
+            int previousOrder = -1;
+            int previousMinute = -1;
             for (int index = 0; index < slots.size(); index++) {
                 String slot = slots.get(index);
-                if (SLOT_BEDTIME.equals(slot) || !knownServerSlot(slot)) {
+                int order = slotOrder(slot);
+                if (order < 0 || order <= previousOrder) {
                     throw ApiException.local();
                 }
                 String time = times.get(index);
-                if (time == null || !time.matches("\\d{2}:\\d{2}")) {
+                int minute = clockMinute(time);
+                if (minute < 0 || minute > latestMinute(slot)) {
+                    throw ApiException.local();
+                }
+                if (previousMinute >= 0 && minute - previousMinute < 4 * 60) {
                     throw ApiException.local();
                 }
                 JSONObject item = new JSONObject();
                 item.put("timing_slot", slot);
                 item.put("dose_time", time);
                 settings.put(item);
+                previousOrder = order;
+                previousMinute = minute;
             }
             JSONObject body = new JSONObject();
             body.put("settings", settings);
@@ -617,18 +628,11 @@ public final class HomeContracts {
             int totalDays,
             String startDate
     ) throws ApiException {
-        if (timingSlots == null) {
+        List<String> orderedSlots = orderedSlots(timingSlots);
+        if (!prn && (orderedSlots.isEmpty() || orderedSlots.size() > 4)) {
             throw ApiException.local();
         }
-        for (String slot : timingSlots) {
-            if (SLOT_BEDTIME.equals(slot) || !knownServerSlot(slot)) {
-                throw ApiException.local();
-            }
-        }
-        if (!prn && timingSlots.isEmpty()) {
-            throw ApiException.local();
-        }
-        if (prn && !timingSlots.isEmpty()) {
+        if (prn && !orderedSlots.isEmpty()) {
             throw ApiException.local();
         }
         if ((drugId == null || drugId <= 0L) && (inputName == null || inputName.trim().isEmpty())) {
@@ -655,9 +659,9 @@ public final class HomeContracts {
                 item.put("is_prn", true);
                 item.put("timing_slots", new JSONArray());
             } else {
-                item.put("times_per_day", timingSlots.size());
+                item.put("times_per_day", orderedSlots.size());
                 JSONArray slots = new JSONArray();
-                for (String slot : timingSlots) {
+                for (String slot : orderedSlots) {
                     slots.put(slot);
                 }
                 item.put("timing_slots", slots);
@@ -827,7 +831,11 @@ public final class HomeContracts {
             throw ApiException.response(200);
         }
         List<String> slots = JsonReads.optionalStrings(item, "timing_slots");
-        if (slots == null) {
+        if (slots == null || !knownSlotList(slots)) {
+            throw ApiException.response(200);
+        }
+        long timesPerDay = JsonReads.number(item, "times_per_day");
+        if (timesPerDay < 0L || timesPerDay > 4L) {
             throw ApiException.response(200);
         }
         return new Medication(
@@ -840,7 +848,7 @@ public final class HomeContracts {
                 JsonReads.text(item, "match_status"),
                 JsonReads.decimal(item, "dose_per_intake"),
                 JsonReads.bool(item, "is_prn"),
-                JsonReads.number(item, "times_per_day"),
+                timesPerDay,
                 slots,
                 meal,
                 JsonReads.optionalNumber(item, "meal_offset_min"),
@@ -1084,11 +1092,76 @@ public final class HomeContracts {
     }
 
     private static boolean knownServerSlot(String slot) {
-        return SLOT_MORNING.equals(slot) || SLOT_LUNCH.equals(slot) || SLOT_DINNER.equals(slot);
+        return slotOrder(slot) >= 0;
     }
 
     private static boolean knownSummarySlot(String slot) {
-        return knownServerSlot(slot) || SLOT_BEDTIME.equals(slot);
+        return knownServerSlot(slot);
+    }
+
+    private static int slotOrder(String slot) {
+        if (SLOT_MORNING.equals(slot)) {
+            return 0;
+        }
+        if (SLOT_LUNCH.equals(slot)) {
+            return 1;
+        }
+        if (SLOT_DINNER.equals(slot)) {
+            return 2;
+        }
+        if (SLOT_BEDTIME.equals(slot)) {
+            return 3;
+        }
+        return -1;
+    }
+
+    private static int latestMinute(String slot) {
+        return SLOT_BEDTIME.equals(slot) ? 23 * 60 + 59 : 20 * 60 + 59;
+    }
+
+    private static int clockMinute(String time) {
+        if (time == null || !time.matches("\\d{2}:\\d{2}")) {
+            return -1;
+        }
+        int hour = Integer.parseInt(time.substring(0, 2));
+        int minute = Integer.parseInt(time.substring(3, 5));
+        if (hour > 23 || minute > 59) {
+            return -1;
+        }
+        return hour * 60 + minute;
+    }
+
+    private static boolean knownSlotList(List<String> slots) throws ApiException {
+        if (slots.size() > 4) {
+            return false;
+        }
+        boolean[] seen = new boolean[4];
+        for (String slot : slots) {
+            int order = slotOrder(slot);
+            if (order < 0 || seen[order]) {
+                return false;
+            }
+            seen[order] = true;
+        }
+        return true;
+    }
+
+    private static List<String> orderedSlots(List<String> timingSlots) throws ApiException {
+        if (timingSlots == null || !knownSlotList(timingSlots)) {
+            throw ApiException.local();
+        }
+        List<String> ordered = new ArrayList<>();
+        String[] names = {SLOT_MORNING, SLOT_LUNCH, SLOT_DINNER, SLOT_BEDTIME};
+        boolean[] seen = new boolean[4];
+        for (String slot : timingSlots) {
+            seen[slotOrder(slot)] = true;
+        }
+        for (int index = 0; index < names.length; index++) {
+            if (seen[index]) {
+                ordered.add(names[index]);
+            }
+        }
+        return ordered;
     }
 
     private static boolean knownSlotState(String state) {

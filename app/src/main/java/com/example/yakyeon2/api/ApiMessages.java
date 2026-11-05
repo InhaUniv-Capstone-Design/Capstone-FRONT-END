@@ -9,6 +9,9 @@ public final class ApiMessages {
         if (ApiCodes.INVALID_CREDENTIALS.equals(code)) {
             return "아이디 또는 비밀번호가 올바르지 않습니다.";
         }
+        if (ApiCodes.LOGIN_LOCKED.equals(code)) {
+            return "로그인 시도가 너무 많아요. 15분 뒤에 다시 시도해주세요.";
+        }
         if (ApiCodes.CURRENT_PASSWORD_MISMATCH.equals(code)) {
             return "현재 비밀번호가 올바르지 않습니다.";
         }
@@ -169,5 +172,9 @@ public final class ApiMessages {
             return "복용 시각이 서로 겹칩니다.";
         }
         return null;
+    }
+
+    public static boolean prefersServerText(String code) {
+        return ApiCodes.VALIDATION_ERROR.equals(code) || ApiCodes.INVALID_SCHEDULE.equals(code);
     }
 }

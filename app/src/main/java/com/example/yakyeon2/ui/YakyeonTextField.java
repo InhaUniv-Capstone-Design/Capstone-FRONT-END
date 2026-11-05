@@ -23,6 +23,8 @@ public class YakyeonTextField extends TextInputLayout {
 
     private final TextInputEditText editText;
     private boolean passwordHidden = true;
+    private int credentialLimit;
+    private LatinCredentialFilter.Kind credentialKind;
 
     public YakyeonTextField(Context context) {
         this(context, null);
@@ -55,6 +57,13 @@ public class YakyeonTextField extends TextInputLayout {
 
     public void useDirectTextInput() {
         applyCredentialInput(LatinCredentialFilter.Kind.ID, false);
+    }
+
+    public void setCredentialLimit(int max) {
+        credentialLimit = max;
+        if (credentialKind != null) {
+            lockLatinInput(credentialKind);
+        }
     }
 
     public void setPasswordToggleEnabled(boolean enabled) {
@@ -110,12 +119,18 @@ public class YakyeonTextField extends TextInputLayout {
     }
 
     private void lockLatinInput(LatinCredentialFilter.Kind kind) {
+        credentialKind = kind;
         editText.setKeyListener(TextKeyListener.getInstance(false, TextKeyListener.Capitalize.NONE));
         editText.setRawInputType(kind == LatinCredentialFilter.Kind.PASSWORD
                 ? AuthInputTypes.PASSWORD
                 : AuthInputTypes.ID);
         editText.setImeOptions(EditorInfo.IME_FLAG_FORCE_ASCII | EditorInfo.IME_ACTION_DONE);
-        editText.setFilters(new InputFilter[]{LatinCredentialFilter.filter(kind)});
+        InputFilter latin = LatinCredentialFilter.filter(kind);
+        if (credentialLimit > 0) {
+            editText.setFilters(new InputFilter[]{latin, new InputFilter.LengthFilter(credentialLimit)});
+        } else {
+            editText.setFilters(new InputFilter[]{latin});
+        }
     }
 
     private void syncPasswordIcon() {

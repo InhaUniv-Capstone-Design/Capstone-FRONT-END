@@ -13,6 +13,12 @@ public final class AuthApi {
     }
 
     public static void login(Context context, String loginId, String password) throws ApiException {
+        if (loginId == null
+                || password == null
+                || loginId.length() > com.example.yakyeon2.auth.AuthValidation.LOGIN_ID_MAX
+                || password.length() > com.example.yakyeon2.auth.AuthValidation.LOGIN_PASSWORD_MAX) {
+            throw ApiException.local();
+        }
         JSONObject body = new JSONObject();
         try {
             body.put("login_id", loginId);

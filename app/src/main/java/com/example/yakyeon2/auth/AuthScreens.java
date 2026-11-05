@@ -82,6 +82,8 @@ public final class AuthScreens {
         prepareField(id, activity.getString(R.string.auth_id_hint), false);
         prepareField(password, activity.getString(R.string.auth_password_hint), true);
         id.useDirectTextInput();
+        id.setCredentialLimit(AuthValidation.LOGIN_ID_MAX);
+        password.setCredentialLimit(AuthValidation.LOGIN_PASSWORD_MAX);
         roundField(id);
         roundField(password);
         root.findViewById(R.id.button_login).setOnClickListener(v ->

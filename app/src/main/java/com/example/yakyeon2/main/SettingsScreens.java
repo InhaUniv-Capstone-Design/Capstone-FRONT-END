@@ -41,6 +41,7 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 
 import com.example.yakyeon2.R;
 import com.example.yakyeon2.ui.ConfirmDialog;
+import com.example.yakyeon2.data.AccountRoles;
 import com.example.yakyeon2.data.ClinicalShareOptions;
 import com.example.yakyeon2.data.DrugRelations;
 import com.example.yakyeon2.data.LegalMarks;
@@ -2040,9 +2041,13 @@ public final class SettingsScreens {
         int side = dp(activity, 20);
         form.setPadding(side, dp(activity, 8), side, 0);
         form.addView(password);
+        ProfileSnapshot profile = account.currentProfile();
+        boolean guardian = profile != null && AccountRoles.GUARDIAN.equals(profile.accountType);
         AlertDialog dialog = new MaterialAlertDialogBuilder(activity)
                 .setTitle(R.string.settings_withdraw_account)
-                .setMessage(R.string.settings_account_delete_message)
+                .setMessage(guardian
+                        ? R.string.settings_account_delete_guardian
+                        : R.string.settings_account_delete_patient)
                 .setView(form)
                 .setPositiveButton(R.string.settings_withdraw_account, null)
                 .setNegativeButton(R.string.action_cancel, null)

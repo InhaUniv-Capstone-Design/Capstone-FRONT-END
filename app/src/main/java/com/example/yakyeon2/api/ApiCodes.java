@@ -3,6 +3,7 @@ package com.example.yakyeon2.api;
 public final class ApiCodes {
 
     public static final String INVALID_CREDENTIALS = "INVALID_CREDENTIALS";
+    public static final String LOGIN_LOCKED = "LOGIN_LOCKED";
     public static final String VALIDATION_ERROR = "VALIDATION_ERROR";
     public static final String UNAUTHENTICATED = "UNAUTHENTICATED";
     public static final String REFRESH_TOKEN_REUSED = "REFRESH_TOKEN_REUSED";

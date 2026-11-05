@@ -75,6 +75,7 @@
     <string name="home_greeting">안녕하세요</string>
     <string name="home_greeting_named">안녕하세요 %1$s님</string>
     <string name="home_subtitle">오늘의 복약 현황을 확인하세요</string>
+    <string name="home_patient_wait">복약자가 연동을 할 때까지 기다려주세요.</string>
     <string name="home_name_unavailable">로그인 서버가 연결되지 않아 이름을 표시하지 않습니다.</string>
     <string name="home_today">오늘의 복약 현황</string>
     <string name="home_taking_count">현재 %1$d개 복용 중  ›</string>
@@ -88,8 +89,9 @@
     <string name="home_interaction_hint">등재 여부만 그래프 탭에서 확인합니다.</string>
     <string name="home_interaction_unchecked">등재 확인이 안 된 약이 %1$d건 있어, 없다고 해서 안전하다고 볼 수 없습니다.</string>
     <string name="home_loading">불러오는 중</string>
-    <string name="home_bedtime_unsupported">취침 · 서버 미지원</string>
-    <string name="med_bedtime_server">취침 시간대는 아직 서버에 보낼 수 없습니다. 취침을 끄면 아침·점심·저녁만 등록됩니다.</string>
+    <string name="auth_login_locked">로그인 시도가 너무 많아요. 15분 뒤에 다시 시도해주세요.</string>
+    <string name="auth_login_id_length">아이디는 100자까지 입력할 수 있습니다.</string>
+    <string name="auth_login_password_length">비밀번호는 128자까지 입력할 수 있습니다.</string>
     <string name="med_consent_unavailable">약 등록 동의를 서버에서 확인하지 못했습니다. 동의 없이 약을 등록하지 않습니다.</string>
     <string name="med_consent_version_missing">약 등록 동의 버전을 서버 약관에서 찾지 못했습니다. 버전을 임의로 정하지 않아 등록을 진행하지 않습니다.</string>
     <string name="med_ocr_empty">인식된 약이 없습니다. 직접 입력해 주세요.</string>
@@ -271,6 +273,8 @@
     <string name="settings_password_changed">비밀번호를 변경했습니다. 다시 로그인해 주세요.</string>
     <string name="settings_logout_confirm_message">로그아웃 하시겠습니까?</string>
     <string name="settings_account_delete_message">비밀번호를 확인하면 계정이 삭제됩니다.</string>
+    <string name="settings_account_delete_patient">본인 탈퇴 시 개인정보와 건강기록이 10분 이내 삭제됩니다.\n프로필, 처방 및 약 정보, 복용 일정 및 기록, 약통 정보, 알림, 병용금기 검사 기록, 로그인 및 푸시 토큰, 약관 동의 상태, 알림 설정, 연동 정보가 삭제됩니다.\n삭제된 데이터는 복구할 수 없습니다.\n탈퇴 후 동일한 휴대폰 번호로 재가입할 수 있습니다.\n동의 및 철회 이력은 개인정보를 제외하고 증빙 목적으로 보관됩니다.</string>
+    <string name="settings_account_delete_guardian">대리인이 탈퇴해도 복약자 기록은 30일간 보관됩니다.\n다른 대리인이 연동 중이거나 복약자에게 본인 앱 계정이 있다면 복약자 기록은 삭제되지 않습니다.\n앱 계정이 없는 복약자의 경우 마지막 대리인이 탈퇴한 시점부터 30일 후 관련 기록이 삭제됩니다.\n삭제된 데이터는 복구할 수 없습니다.\n탈퇴 후 동일한 휴대폰 번호로 재가입할 수 있습니다.\n동의 및 철회 이력은 개인정보를 제외하고 증빙 목적으로 보관됩니다.</string>
     <string name="settings_account_delete_done">계정을 삭제했습니다.</string>
     <string name="auth_login_loading">로그인하고 있습니다.</string>
     <string name="api_error_title">안내</string>
@@ -369,7 +373,7 @@
     <string name="settings_legal_section_withdraw">동의 철회</string>
     <string name="settings_legal_withdraw_limit">동의 철회시 서비스 사용이 제한됩니다</string>
     <string name="settings_legal_section_keep">복약 정보 보관</string>
-    <string name="settings_legal_keep_body">① 대리인과 복용자가 다른 경우\n• 대리인이 앱 탈퇴를 하더라도, 30일간 복용자의 복용기록 보관\n② 대리인과 복용자가 같은 경우\n• 탈퇴 시 즉시 삭제</string>
+    <string name="settings_legal_keep_body">① 복약자 본인 계정\n• 본인 탈퇴 시 개인정보와 건강기록이 10분 이내 삭제됩니다.\n② 대리인 계정\n• 대리인이 탈퇴해도 복약자 기록은 30일간 보관됩니다.\n• 다른 대리인이 연동 중이거나 복약자에게 본인 앱 계정이 있으면 복약자 기록은 삭제되지 않습니다.\n• 앱 계정이 없는 복약자는 마지막 대리인 탈퇴 후 30일이 지나면 관련 기록이 삭제됩니다.\n삭제된 데이터는 복구할 수 없습니다.\n탈퇴 후 동일한 휴대폰 번호로 재가입할 수 있습니다.\n동의 및 철회 이력은 개인정보를 제외하고 증빙 목적으로 보관됩니다.</string>
     <string name="settings_withdraw_card_terms">서비스 이용 약관 동의</string>
     <string name="settings_terms_open">서비스 이용약관</string>
     <string name="settings_terms_sub">약연 서비스 이용 조건 및 이용자와 서비스 운영자의 권리·의무</string>
@@ -616,7 +620,7 @@
     <string name="med_need_confirm">모든 약을 확인해야 합니다.</string>
     <string name="med_need_confirm_body">확인완료에 체크해주세요</string>
     <string name="med_pillbox_unregistered">약통이 등록되지 않았습니다</string>
-    <string name="med_time_rule">복용 시간을 모두 입력하고 아침·점심·저녁은 최소 4시간 이상 간격을 두어야 합니다. 취침은 이 간격에 포함하지 않습니다.</string>
+    <string name="med_time_rule">아침, 점심, 저녁, 취침 순서로 시각을 설정해주세요. 시간대 사이는 최소 4시간입니다. 아침·점심·저녁은 20:59까지, 취침은 23:59까지 설정할 수 있습니다.</string>
     <string name="med_time_error_title">복용 시간이 올바르지 않습니다.</string>
     <string name="med_time_error_body">• 복용 시간을 전부 입력해야해요.\n• 최소 4시간 이상 간격으로 복용해야해요</string>
     <string name="med_delete_title">약물을 삭제하시겠습니까?</string>
