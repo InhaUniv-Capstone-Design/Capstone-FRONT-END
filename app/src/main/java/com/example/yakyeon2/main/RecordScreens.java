@@ -809,17 +809,19 @@ public final class RecordScreens {
         boolean night = HomeContracts.SLOT_DINNER.equals(dose.timingSlot)
                 || HomeContracts.SLOT_BEDTIME.equals(dose.timingSlot);
         icon.setImageResource(night ? R.drawable.ic_yakyeon_moon : R.drawable.ic_yakyeon_sun);
+        Instant now = Instant.now();
+        String shown = HomeContracts.scheduleStatus(dose, now);
         TextView badge = row.findViewById(R.id.text_schedule_status);
-        badge.setText(serverStatusLabel(activity, dose.status));
+        badge.setText(serverStatusLabel(activity, shown));
         int iconBg = activity.getColor(R.color.yakyeon_mint);
         int iconTint = activity.getColor(R.color.yakyeon_primary);
-        if (HomeContracts.STATUS_NORMAL.equals(dose.status)) {
+        if (HomeContracts.STATUS_NORMAL.equals(shown)) {
             iconBg = activity.getColor(R.color.yakyeon_primary);
             iconTint = activity.getColor(R.color.white);
-        } else if (HomeContracts.STATUS_DELAYED.equals(dose.status)) {
+        } else if (HomeContracts.STATUS_DELAYED.equals(shown)) {
             iconBg = activity.getColor(R.color.yakyeon_delayed_badge);
             iconTint = activity.getColor(R.color.yakyeon_delayed_text);
-        } else if (HomeContracts.STATUS_MISSED.equals(dose.status)) {
+        } else if (HomeContracts.STATUS_MISSED.equals(shown)) {
             iconBg = activity.getColor(R.color.yakyeon_missed_badge);
             iconTint = activity.getColor(R.color.yakyeon_missed_text);
         }
@@ -827,38 +829,21 @@ public final class RecordScreens {
         paintPill(badge, iconBg, iconTint);
         TextView revise = row.findViewById(R.id.text_schedule_revise);
         TextView manual = row.findViewById(R.id.text_schedule_manual);
-        if (writes) {
+        revise.setVisibility(View.GONE);
+        manual.setVisibility(View.GONE);
+        HomeContracts.DoseFollowUp follow = HomeContracts.followUp(dose, now);
+        if (follow == HomeContracts.DoseFollowUp.ASK && writes) {
             revise.setVisibility(View.VISIBLE);
-            revise.setText(HomeContracts.STATUS_PENDING.equals(dose.status)
-                    ? R.string.med_dose_taken
-                    : R.string.med_revise);
-            revise.setOnClickListener(v -> openServerTime(activity, dose, host));
-            manual.setVisibility(View.VISIBLE);
-            manual.setText(R.string.med_dose_not_taken);
-            manual.setOnClickListener(v -> host.revertServerDose(dose.scheduledDoseId));
-        }
-        if (dose.takenAt != null || dose.corrected || dose.decisionSource != null) {
-            StringBuilder detail = new StringBuilder();
-            if (dose.takenAt != null) {
-                detail.append(HomeContracts.clock(dose.takenAt));
-            }
-            if (dose.decisionSource != null) {
-                if (detail.length() > 0) {
-                    detail.append(" · ");
-                }
-                detail.append(decisionLabel(activity, dose.decisionSource));
-            }
-            if (dose.corrected) {
-                if (detail.length() > 0) {
-                    detail.append(" · ");
-                }
-                detail.append(activity.getString(R.string.med_corrected));
-            }
-            if (detail.length() > 0 && !writes) {
+            revise.setText(R.string.med_dose_ask);
+            revise.setTextColor(activity.getColor(R.color.yakyeon_delayed_text));
+            revise.setOnClickListener(v -> askTakenTime(activity, dose, host, null));
+        } else if (follow == HomeContracts.DoseFollowUp.RECORDED && dose.takenAt != null) {
+            String clock = HomeContracts.clock(dose.takenAt);
+            if (!clock.isEmpty()) {
                 manual.setVisibility(View.VISIBLE);
-                manual.setText(detail);
-            } else if (detail.length() > 0) {
-                name.setText(name.getText() + "\n" + detail);
+                manual.setText(clock);
+                manual.setTextColor(activity.getColor(R.color.yakyeon_text));
+                manual.setOnClickListener(null);
             }
         }
         return row;
@@ -909,12 +894,20 @@ public final class RecordScreens {
         return row;
     }
 
-    private static void openServerTime(AppCompatActivity activity, HomeContracts.Dose dose, MedScreens.Host host) {
+    public static Dialog askTakenTime(
+            AppCompatActivity activity,
+            HomeContracts.Dose dose,
+            MedScreens.Host host,
+            String title
+    ) {
         ZoneId zone = ZoneId.systemDefault();
         long[] takenAt = new long[] {System.currentTimeMillis()};
         int[] hour = new int[] {Instant.ofEpochMilli(takenAt[0]).atZone(zone).getHour()};
         int[] minute = new int[] {Instant.ofEpochMilli(takenAt[0]).atZone(zone).getMinute()};
         View sheet = LayoutInflater.from(activity).inflate(R.layout.dialog_taken_time, null);
+        if (title != null && !title.isEmpty()) {
+            ((TextView) sheet.findViewById(R.id.text_time_title)).setText(title);
+        }
         ((TextView) sheet.findViewById(R.id.text_time_target)).setText(
                 MainScreens.slotLabel(activity, dose.timingSlot) + " " + HomeContracts.clock(dose.scheduledAt)
         );
@@ -938,6 +931,7 @@ public final class RecordScreens {
             host.recordServerDose(dose.scheduledDoseId, takenAt[0]);
         });
         dialog.show();
+        return dialog;
     }
 
     private static void pickServerRange(
@@ -957,19 +951,6 @@ public final class RecordScreens {
                 host.selectServerHistoryRange(pickedStart, pickedEnd);
             }, end.getYear(), end.getMonthValue() - 1, end.getDayOfMonth()).show();
         }, start.getYear(), start.getMonthValue() - 1, start.getDayOfMonth()).show();
-    }
-
-    private static String decisionLabel(AppCompatActivity activity, String source) {
-        if ("DEVICE".equals(source)) {
-            return "약통";
-        }
-        if ("MANUAL".equals(source)) {
-            return "앱";
-        }
-        if ("SYSTEM".equals(source)) {
-            return "시스템";
-        }
-        return source == null ? "" : source;
     }
 
     private static String serverStatusLabel(AppCompatActivity activity, String status) {

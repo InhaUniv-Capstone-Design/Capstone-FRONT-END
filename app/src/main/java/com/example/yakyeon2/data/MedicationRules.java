@@ -222,7 +222,7 @@ public final class MedicationRules {
         if (name == null || name.trim().isEmpty()) {
             return false;
         }
-        if (medicine.getAmount() == null || medicine.timings().isEmpty()) {
+        if (!medicine.hasDose() || medicine.timings().isEmpty()) {
             return false;
         }
         if (medicine.rounds().isEmpty() || medicine.getStart() == null || medicine.getEnd() == null) {

@@ -33,6 +33,7 @@ public final class LocalAppSettings {
         if (raw != null) {
             options.restoreState(raw);
         }
+        options.setIncludeAdherence(true);
         return options;
     }
 

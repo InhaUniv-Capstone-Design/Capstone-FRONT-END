@@ -12,7 +12,7 @@ public final class ClinicalShareOptions {
     private boolean includeRecords = true;
     private boolean includeSpan = true;
     private boolean includeDur = true;
-    private boolean includeAdherence;
+    private boolean includeAdherence = true;
     private boolean includeCurrent = true;
     private boolean includeFinished = true;
     private Long startEpoch;

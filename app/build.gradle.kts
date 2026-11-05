@@ -14,7 +14,8 @@ android {
         targetSdk = 37
         versionCode = 1
         versionName = "1.0"
-        val apiBaseUrl = (project.findProperty("yakyeon.apiBaseUrl") as String?) ?: "http://localhost:8080"
+        val apiBaseUrl = (project.findProperty("yakyeon.apiBaseUrl") as String?)
+            ?: "https://kue200p7z3.execute-api.ap-northeast-2.amazonaws.com"
         buildConfigField(
             "String",
             "API_BASE_URL",

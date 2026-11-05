@@ -102,6 +102,78 @@ public class HomeContractTest {
     }
 
     @Test
+    public void morningInsideThreeHoursAsksAndLaterSlotsStayQuiet() throws Exception {
+        java.time.Instant now = java.time.OffsetDateTime.parse("2026-10-27T09:30:00+09:00").toInstant();
+        HomeContracts.Dose morning = dose(
+                1L,
+                "MORNING",
+                "2026-10-27T08:00:00+09:00",
+                "2026-10-27T11:00:00+09:00",
+                "PENDING",
+                null
+        );
+        HomeContracts.Dose lunch = dose(
+                2L,
+                "LUNCH",
+                "2026-10-27T13:00:00+09:00",
+                "2026-10-27T16:00:00+09:00",
+                "PENDING",
+                null
+        );
+        HomeContracts.Dose dinner = dose(
+                3L,
+                "DINNER",
+                "2026-10-27T18:00:00+09:00",
+                "2026-10-27T21:00:00+09:00",
+                "PENDING",
+                null
+        );
+        Assert.assertEquals(HomeContracts.DoseFollowUp.ASK, HomeContracts.followUp(morning, now));
+        Assert.assertEquals(HomeContracts.STATUS_MISSED, HomeContracts.scheduleStatus(morning, now));
+        Assert.assertEquals(HomeContracts.DoseFollowUp.NONE, HomeContracts.followUp(lunch, now));
+        Assert.assertEquals(HomeContracts.DoseFollowUp.NONE, HomeContracts.followUp(dinner, now));
+        Assert.assertEquals(morning.scheduledDoseId, HomeContracts.catchUpDose(
+                java.util.Arrays.asList(dinner, lunch, morning),
+                now
+        ).scheduledDoseId);
+
+        java.time.Instant afterClose = java.time.OffsetDateTime.parse("2026-10-27T11:01:00+09:00").toInstant();
+        Assert.assertEquals(HomeContracts.DoseFollowUp.NONE, HomeContracts.followUp(morning, afterClose));
+
+        HomeContracts.Dose delayed = dose(
+                4L,
+                "MORNING",
+                "2026-10-27T08:00:00+09:00",
+                "2026-10-27T11:00:00+09:00",
+                "DELAYED",
+                "2026-10-27T09:40:00+09:00"
+        );
+        Assert.assertEquals(HomeContracts.DoseFollowUp.RECORDED, HomeContracts.followUp(delayed, now));
+        Assert.assertEquals(HomeContracts.STATUS_DELAYED, HomeContracts.scheduleStatus(delayed, now));
+    }
+
+    private static HomeContracts.Dose dose(
+            long id,
+            String slot,
+            String scheduled,
+            String close,
+            String status,
+            String taken
+    ) throws Exception {
+        String takenField = taken == null ? "null" : "\"" + taken + "\"";
+        return HomeContracts.readDose(new JSONObject(
+                "{"
+                        + "\"scheduled_dose_id\":" + id + ",\"prescription_id\":4,\"hospital_name\":\"병원\","
+                        + "\"timing_slot\":\"" + slot + "\",\"scheduled_at\":\"" + scheduled + "\","
+                        + "\"normal_until\":\"2026-10-27T08:30:00+09:00\",\"close_at\":\"" + close + "\","
+                        + "\"status\":\"" + status + "\",\"taken_at\":" + takenField + ","
+                        + "\"decision_source\":null,\"corrected\":false,"
+                        + "\"medications\":[{\"medication_id\":1,\"drug_name\":\"약\",\"dose_per_intake\":1}]"
+                        + "}"
+        ));
+    }
+
+    @Test
     public void medicationKeepsHalfDoseAndNullableFields() throws Exception {
         HomeContracts.Medication medication = HomeContracts.readMedication(new JSONObject(
                 "{"
@@ -118,6 +190,30 @@ public class HomeContractTest {
         Assert.assertNull(medication.hospitalName);
         Assert.assertNull(medication.endedOn);
         Assert.assertEquals(HomeContracts.STATUS_ACTIVE, medication.status);
+        java.util.List<SettingsContracts.ShareMedicine> shared = SettingsContracts.shareMedicines(
+                java.util.Arrays.asList(
+                        medication,
+                        HomeContracts.readMedication(new JSONObject(
+                                "{"
+                                        + "\"medication_id\":10,\"prescription_id\":4,\"hospital_name\":null,\"drug_id\":null,"
+                                        + "\"drug_name\":\"종료약\",\"manufacturer\":null,\"match_status\":\"UNMATCHED\","
+                                        + "\"dose_per_intake\":1,\"is_prn\":false,\"times_per_day\":2,"
+                                        + "\"timing_slots\":[\"MORNING\",\"DINNER\"],\"meal_relation\":null,\"meal_offset_min\":null,"
+                                        + "\"total_days\":7,\"start_date\":\"2026-09-01\",\"end_date\":\"2026-09-07\","
+                                        + "\"ended_on\":\"2026-09-03\",\"status\":\"ENDED\""
+                                        + "}"
+                        ))
+                )
+        );
+        Assert.assertEquals(2, shared.size());
+        Assert.assertEquals("직접입력", shared.get(0).name);
+        Assert.assertEquals("1회 0.5 · 아침", shared.get(0).detail);
+        Assert.assertFalse(shared.get(0).ended);
+        Assert.assertTrue(shared.get(0).statusKnown);
+        Assert.assertEquals("종료약", shared.get(1).name);
+        Assert.assertEquals("2026-09-03", shared.get(1).endDate);
+        Assert.assertTrue(shared.get(1).ended);
+        Assert.assertEquals("1회 1 · 아침, 저녁", shared.get(1).detail);
     }
 
     @Test

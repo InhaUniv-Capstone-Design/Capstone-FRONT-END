@@ -53,9 +53,14 @@
     <string name="auth_code_hint">숫자 6자리</string>
     <string name="auth_code_sent">인증번호를 보냈습니다.</string>
     <string name="auth_code_wrong">인증번호가 일치하지 않습니다.</string>
+    <string name="auth_sms_guide">%1$s로 아래 코드를 문자로 보내 주세요</string>
+    <string name="auth_sms_digits_only">숫자만 보내 주세요. 다른 글자나 공백이 붙으면 확인되지 않을 수 있어요.</string>
+    <string name="auth_sms_open">문자 앱으로 보내기</string>
+    <string name="auth_sms_pending">문자가 아직 확인되지 않았어요. 코드만 정확히 문자로 보낸 뒤 다시 눌러 주세요.</string>
+    <string name="auth_sms_unavailable">이 기기에서는 문자를 보낼 수 없어요. 다른 휴대폰에서 위 번호로 코드를 보내 주세요.</string>
     <string name="auth_code_need">인증번호를 입력해 주세요.</string>
     <string name="auth_code_format">인증번호는 숫자 6자리입니다.</string>
-    <string name="auth_phone_invalid">휴대폰 번호는 01로 시작하는 10~11자리입니다.</string>
+    <string name="auth_phone_invalid">휴대폰 번호는 010으로 시작하는 11자리입니다.</string>
     <string name="auth_birth_invalid">생년월일을 다시 선택해 주세요.</string>
     <string name="auth_id_available">사용할 수 있는 아이디입니다.</string>
     <string name="auth_id_taken">이미 사용 중인 아이디입니다.</string>
@@ -68,6 +73,7 @@
     <string name="auth_dev_pillbox_scenario">약통 연결 후 시나리오 테스트</string>
     <string name="auth_dev_home_note">디버그 빌드 전용입니다. 로그인에 성공한 것이 아닙니다.</string>
     <string name="home_greeting">안녕하세요</string>
+    <string name="home_greeting_named">안녕하세요 %1$s님</string>
     <string name="home_subtitle">오늘의 복약 현황을 확인하세요</string>
     <string name="home_name_unavailable">로그인 서버가 연결되지 않아 이름을 표시하지 않습니다.</string>
     <string name="home_today">오늘의 복약 현황</string>
@@ -95,6 +101,10 @@
     <string name="med_server_partial_slot">처방은 등록됐지만 약통 칸 배정에 실패했습니다.</string>
     <string name="med_dose_taken">먹었어요</string>
     <string name="med_dose_not_taken">안 먹었어요</string>
+    <string name="med_dose_ask">드셨나요?</string>
+    <string name="med_catchup_title">%1$s %2$s 약을 드셨나요?</string>
+    <string name="med_catchup_notice_title">복용 확인</string>
+    <string name="med_catchup_notice_body">%1$s %2$s 약을 드셨는지, 언제 드셨는지 확인해 주세요.</string>
     <string name="med_history_server_max">조회 기간은 최대 90일입니다.</string>
     <string name="med_corrected">정정됨</string>
     <string name="med_end_one_title">약 복용 종료</string>
@@ -185,6 +195,13 @@
     <string name="graph_not_safety">등재된 관계가 없다는 것은 모든 약이 안전하다는 뜻이 아닙니다.</string>
     <string name="graph_edge_detail">%1$s\n출처 %2$s\n기준일 %3$s\n주의사항 %4$s\n%5$s</string>
     <string name="care_share_withheld">공유되지 않음</string>
+    <string name="care_share_none">공유 항목 없음</string>
+    <string name="care_share_personal">이름·연락처</string>
+    <string name="care_share_med">약물</string>
+    <string name="care_share_photo">사진</string>
+    <string name="care_share_dose">복약 기록</string>
+    <string name="care_share_device">약통</string>
+    <string name="care_share_dur">병용금기</string>
     <string name="pillbox_screen_title">스마트 약통</string>
     <string name="pillbox_connected">연결됨</string>
     <string name="pillbox_slots_used">약통 %1$d칸 사용 중</string>
@@ -280,7 +297,7 @@
     <string name="settings_noti_pillbox">약통 상태 알림</string>
     <string name="settings_noti_pillbox_help">열림, 복용 확인, 기기 이상</string>
     <string name="settings_noti_open_detail">보호자 공유 알림</string>
-    <string name="settings_noti_detail_title">보호자 공유 알림</string>
+    <string name="settings_noti_detail_title">약통 상태 알림</string>
     <string name="settings_noti_detail_locked">약통 상태 알림이 꺼져 있어 이 항목은 바뀌지 않습니다.</string>
     <string name="settings_noti_open">약통 열림 알림</string>
     <string name="settings_noti_open_help">약통이 열리면 알려드려요</string>
@@ -563,8 +580,6 @@
     <string name="med_into_pillbox">약통에 넣기</string>
     <string name="med_edit_title">약 봉투 등록</string>
     <string name="med_search">약물 검색</string>
-    <string name="med_search_unavailable">약1부터 약10은 개발용 예시 이름입니다. 의약품 정보나 서버 데이터가 아닙니다.</string>
-    <string name="med_name_example_note">약1부터 약10은 개발용 예시 이름입니다. 의약품 정보나 서버 데이터가 아닙니다.</string>
     <string name="med_name_example_tag">개발용 예시</string>
     <string name="med_name_custom_tag">직접 입력한 이름</string>
     <string name="med_name_direct">이 이름으로 직접 입력</string>
@@ -599,6 +614,8 @@
     <string name="med_save_edit">수정 완료</string>
     <string name="med_required">필수 항목을 입력해주세요</string>
     <string name="med_need_confirm">모든 약을 확인해야 합니다.</string>
+    <string name="med_need_confirm_body">확인완료에 체크해주세요</string>
+    <string name="med_pillbox_unregistered">약통이 등록되지 않았습니다</string>
     <string name="med_time_rule">복용 시간을 모두 입력하고 아침·점심·저녁은 최소 4시간 이상 간격을 두어야 합니다. 취침은 이 간격에 포함하지 않습니다.</string>
     <string name="med_time_error_title">복용 시간이 올바르지 않습니다.</string>
     <string name="med_time_error_body">• 복용 시간을 전부 입력해야해요.\n• 최소 4시간 이상 간격으로 복용해야해요</string>

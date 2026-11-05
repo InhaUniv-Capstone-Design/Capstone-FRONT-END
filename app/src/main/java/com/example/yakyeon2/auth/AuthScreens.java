@@ -1,8 +1,11 @@
 package com.example.yakyeon2.auth;
 
 import android.app.DatePickerDialog;
+import android.content.ActivityNotFoundException;
+import android.content.Intent;
 import android.content.pm.ApplicationInfo;
 import android.content.res.ColorStateList;
+import android.net.Uri;
 import android.text.InputType;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -20,6 +23,7 @@ import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
 
 import com.example.yakyeon2.R;
+import com.example.yakyeon2.api.AuthContracts;
 import com.example.yakyeon2.data.AccountType;
 import com.example.yakyeon2.ui.YakyeonTextField;
 import com.google.android.material.card.MaterialCardView;
@@ -145,7 +149,11 @@ public final class AuthScreens {
         return root;
     }
 
-    public static View signupForm(AppCompatActivity activity, Host host) {
+    public static View signupForm(
+            AppCompatActivity activity,
+            Host host,
+            AuthContracts.PhoneVerification phoneVerification
+    ) {
         View root = LayoutInflater.from(activity).inflate(R.layout.screen_signup_form, null);
         YakyeonTextField name = root.findViewById(R.id.field_name);
         YakyeonTextField birth = root.findViewById(R.id.field_birth);
@@ -182,7 +190,50 @@ public final class AuthScreens {
                         password.getText(),
                         confirm.getText()
                 ));
+        applyPhoneVerification(activity, root, phoneVerification, host);
         return root;
+    }
+
+    public static void applyPhoneVerification(
+            AppCompatActivity activity,
+            View root,
+            AuthContracts.PhoneVerification verification,
+            Host host
+    ) {
+        View codePanel = root.findViewById(R.id.panel_verification_code);
+        View smsPanel = root.findViewById(R.id.panel_outbound_sms);
+        if (codePanel == null || smsPanel == null) {
+            return;
+        }
+        boolean outbound = verification != null && verification.outboundSms();
+        codePanel.setVisibility(outbound ? View.GONE : View.VISIBLE);
+        smsPanel.setVisibility(outbound ? View.VISIBLE : View.GONE);
+        if (!outbound) {
+            return;
+        }
+        TextView guide = root.findViewById(R.id.text_sms_guide);
+        TextView code = root.findViewById(R.id.text_sms_code);
+        guide.setText(activity.getString(
+                R.string.auth_sms_guide,
+                AuthContracts.displayMessageTo(verification.messageTo)
+        ));
+        code.setText(verification.messageText);
+        root.findViewById(R.id.button_open_sms).setOnClickListener(v -> {
+            if (!openSms(activity, verification.messageTo, verification.messageText)) {
+                host.showMessage(root, activity.getString(R.string.auth_sms_unavailable));
+            }
+        });
+    }
+
+    private static boolean openSms(AppCompatActivity activity, String messageTo, String messageText) {
+        Intent intent = new Intent(Intent.ACTION_SENDTO, Uri.parse("smsto:" + messageTo));
+        intent.putExtra("sms_body", messageText);
+        try {
+            activity.startActivity(intent);
+            return true;
+        } catch (ActivityNotFoundException exception) {
+            return false;
+        }
     }
 
     public static void showConsent(

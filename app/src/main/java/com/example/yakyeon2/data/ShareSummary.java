@@ -18,7 +18,7 @@ public final class ShareSummary {
     public static final String PERIOD_LABEL = "복용기간";
     public static final String TITLE_DUR = "병용금기 등재 정보";
     public static final String TITLE_TAKING = "복용 중인 약물";
-    public static final String TITLE_FINISHED = "복약한 약물";
+    public static final String TITLE_FINISHED = "복용 종료한 약물";
     public static final String EMPTY_TAKING = "현재 복용 중인 약이 없습니다.";
     public static final String EMPTY_DUR = "확인된 병용금기 등재 정보가 없습니다.";
     public static final String LABEL_OVERLAP = "함께 복용한 기간";
@@ -195,6 +195,147 @@ public final class ShareSummary {
             text.append(sourceValue).append('\n');
         }
         text.append(disclaimer).append('\n');
+        return text.toString();
+    }
+
+    public static final class ListedMedicine {
+        public final String name;
+        public final String detail;
+        public final LocalDate start;
+        public final LocalDate end;
+        public final boolean ended;
+        public final boolean statusKnown;
+
+        public ListedMedicine(
+                String name,
+                String detail,
+                LocalDate start,
+                LocalDate end,
+                boolean ended,
+                boolean statusKnown
+        ) {
+            this.name = name;
+            this.detail = detail == null ? "" : detail;
+            this.start = start;
+            this.end = end;
+            this.ended = ended;
+            this.statusKnown = statusKnown;
+        }
+    }
+
+    public static ShareSummary document(
+            String patientName,
+            LocalDate start,
+            LocalDate end,
+            List<ListedMedicine> medications,
+            boolean includeCurrent,
+            boolean includeFinished,
+            boolean includeSpan,
+            List<String> interactions,
+            List<String> records,
+            String adherence
+    ) {
+        LocalDate periodEnd = end == null ? LocalDate.now() : end;
+        LocalDate periodStart = start == null ? periodEnd : start;
+        if (periodEnd.isBefore(periodStart)) {
+            periodEnd = periodStart;
+        }
+        int days = (int) (periodEnd.toEpochDay() - periodStart.toEpochDay() + 1);
+        List<MedicineLine> taking = new ArrayList<>();
+        List<MedicineLine> finished = new ArrayList<>();
+        if (medications != null) {
+            for (ListedMedicine medicine : medications) {
+                if (medicine == null || medicine.name == null || medicine.name.trim().isEmpty()) {
+                    continue;
+                }
+                boolean courseEnded = medicine.statusKnown
+                        ? medicine.ended
+                        : medicine.ended || (medicine.end != null && medicine.end.isBefore(periodEnd));
+                String range = medicineRange(medicine.start, medicine.end, includeSpan);
+                MedicineLine line = new MedicineLine(
+                        medicine.name.trim(),
+                        medicine.detail,
+                        range,
+                        "",
+                        !courseEnded
+                );
+                if (courseEnded) {
+                    if (includeFinished) {
+                        finished.add(line);
+                    }
+                } else if (includeCurrent) {
+                    taking.add(line);
+                }
+            }
+        }
+        List<Interaction> pairs = new ArrayList<>();
+        boolean showDur = interactions != null;
+        if (showDur) {
+            for (String line : interactions) {
+                if (line == null || line.trim().isEmpty()) {
+                    continue;
+                }
+                String left = line.trim();
+                String right = "";
+                int split = left.indexOf(" ~ ");
+                if (split >= 0) {
+                    right = left.substring(split + 3).trim();
+                    left = left.substring(0, split).trim();
+                }
+                pairs.add(new Interaction(left, right, "", ""));
+            }
+        }
+        String extra = shareExtra(records, adherence);
+        String note = extra.isEmpty() ? DISCLAIMER : extra + "\n" + DISCLAIMER;
+        return new ShareSummary(
+                patientLine(patientName),
+                days,
+                days + "일",
+                DAY.format(periodStart),
+                DAY.format(periodEnd),
+                showDur,
+                Collections.unmodifiableList(pairs),
+                Collections.unmodifiableList(taking),
+                Collections.unmodifiableList(finished),
+                showDur ? SOURCE_REGISTRY : null,
+                null,
+                note
+        );
+    }
+
+    private static String medicineRange(LocalDate start, LocalDate end, boolean includeSpan) {
+        if (!includeSpan) {
+            return "";
+        }
+        if (start != null && end != null && !end.isBefore(start)) {
+            return period(start, end);
+        }
+        if (start != null) {
+            return DAY.format(start);
+        }
+        if (end != null) {
+            return DAY.format(end);
+        }
+        return "";
+    }
+
+    private static String shareExtra(List<String> records, String adherence) {
+        StringBuilder text = new StringBuilder();
+        if (records != null && !records.isEmpty()) {
+            text.append("복약 기록");
+            for (String line : records) {
+                if (line == null || line.trim().isEmpty()) {
+                    continue;
+                }
+                text.append('\n').append(line.trim());
+            }
+        }
+        if (adherence != null && !adherence.trim().isEmpty()) {
+            if (text.length() > 0) {
+                text.append('\n');
+            }
+            text.append("복용률 ").append(adherence.trim());
+        }
         return text.toString();
     }
 

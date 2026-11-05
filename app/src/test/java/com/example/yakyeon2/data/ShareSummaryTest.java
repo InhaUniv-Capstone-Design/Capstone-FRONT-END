@@ -72,6 +72,75 @@ public class ShareSummaryTest {
     }
 
     @Test
+    public void serverMedicinesSplitIntoTakingAndFinished() {
+        java.util.List<ShareSummary.ListedMedicine> medications = java.util.Arrays.asList(
+                new ShareSummary.ListedMedicine(
+                        "현재약",
+                        "1회 1 · 아침",
+                        LocalDate.of(2026, 10, 1),
+                        LocalDate.of(2026, 11, 30),
+                        false,
+                        true
+                ),
+                new ShareSummary.ListedMedicine(
+                        "종료약",
+                        "1회 0.5 · 저녁",
+                        LocalDate.of(2026, 9, 1),
+                        LocalDate.of(2026, 10, 1),
+                        true,
+                        true
+                )
+        );
+        ShareSummary summary = ShareSummary.document(
+                "김약연",
+                LocalDate.of(2026, 10, 1),
+                LocalDate.of(2026, 10, 30),
+                medications,
+                true,
+                true,
+                true,
+                null,
+                null,
+                null
+        );
+        assertEquals(1, summary.taking.size());
+        assertEquals("현재약", summary.taking.get(0).name);
+        assertEquals("1회 1 · 아침", summary.taking.get(0).prescription);
+        assertEquals("2026.10.01 - 2026.11.30", summary.taking.get(0).range);
+        assertEquals(1, summary.finished.size());
+        assertEquals("종료약", summary.finished.get(0).name);
+        assertEquals("2026.09.01 - 2026.10.01", summary.finished.get(0).range);
+        assertTrue(summary.plainText().contains("복용 중인 약물"));
+        assertTrue(summary.plainText().contains("복용 종료한 약물"));
+    }
+
+    @Test
+    public void knownActiveMedicineStaysTakingWhenPlannedEndIsPast() {
+        ShareSummary summary = ShareSummary.document(
+                "김약연",
+                LocalDate.of(2026, 10, 1),
+                LocalDate.of(2026, 11, 4),
+                java.util.Collections.singletonList(new ShareSummary.ListedMedicine(
+                        "현재약",
+                        "1회 1",
+                        LocalDate.of(2026, 10, 1),
+                        LocalDate.of(2026, 10, 20),
+                        false,
+                        true
+                )),
+                true,
+                true,
+                true,
+                null,
+                null,
+                null
+        );
+        assertEquals(1, summary.taking.size());
+        assertEquals("현재약", summary.taking.get(0).name);
+        assertTrue(summary.finished.isEmpty());
+    }
+
+    @Test
     public void endedMedicineMovesToFinishedAndKeepsDoseCounts() {
         MedicationStore store = ScenarioPrescriptions.knownStore();
         SavedMedicine medicine = ScenarioPrescriptions.medicine(store, "약6");

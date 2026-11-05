@@ -55,8 +55,8 @@ public final class AuthApi {
         return AuthContracts.readTerms(ApiClient.callArray(context, "GET", "/terms", null, false));
     }
 
-    public static long sendPhoneCode(Context context, String phone) throws ApiException {
-        return AuthContracts.readVerificationId(ApiClient.call(
+    public static AuthContracts.PhoneVerification sendPhoneCode(Context context, String phone) throws ApiException {
+        return AuthContracts.readPhoneVerification(ApiClient.call(
                 context,
                 "POST",
                 "/auth/phone-verifications",
@@ -65,13 +65,17 @@ public final class AuthApi {
         ));
     }
 
-    public static AuthContracts.PhoneConfirm confirmPhone(Context context, long verificationId, String code)
-            throws ApiException {
+    public static AuthContracts.PhoneConfirm confirmPhone(
+            Context context,
+            long verificationId,
+            String code,
+            String phone
+    ) throws ApiException {
         return AuthContracts.readPhoneConfirm(ApiClient.call(
                 context,
                 "POST",
                 "/auth/phone-verifications/" + verificationId + "/confirm",
-                AuthContracts.confirmBody(code),
+                AuthContracts.confirmBody(code, phone),
                 false
         ));
     }

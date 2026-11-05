@@ -18,6 +18,20 @@ import static org.junit.Assert.assertTrue;
 public class ApiContractTest {
 
     @Test
+    public void endpointAppendsTheApiPathOnce() throws Exception {
+        String terms = ApiClient.endpoint("/terms").toString();
+        String login = ApiClient.endpoint("auth/login").toString();
+        String base = ApiConfig.BASE_URL.replaceAll("/+$", "");
+        assertTrue(base.startsWith("https://"));
+        assertEquals(base + "/terms", terms);
+        assertEquals(base + "/auth/login", login);
+        assertFalse(terms.contains("//terms"));
+        assertFalse(base.contains("localhost"));
+        assertFalse(base.contains("127.0.0.1"));
+        assertFalse(base.contains("15.164.17.62"));
+    }
+
+    @Test
     public void logoutWithoutRefreshTokenDoesNotCallTheServer() {
         assertFalse(AuthContracts.callsServerLogout(null));
         assertFalse(AuthContracts.callsServerLogout(""));
@@ -122,9 +136,26 @@ public class ApiContractTest {
         JSONObject response = new JSONObject()
                 .put("patient", new JSONObject().put("name", "홍길동").put("birth_date", "1950-01-01"))
                 .put("period", new JSONObject().put("from", "2026-10-01").put("to", "2026-10-29"))
-                .put("medications", new JSONArray().put(new JSONObject().put("drug_name", "메트포르민정")));
+                .put("medications", new JSONArray()
+                        .put(new JSONObject()
+                                .put("drug_name", "메트포르민정")
+                                .put("dose_per_intake", 1)
+                                .put("start_date", "2026-10-01")
+                                .put("end_date", "2026-11-30")
+                                .put("status", "ACTIVE")
+                                .put("timing_slots", new JSONArray().put("MORNING")))
+                        .put(new JSONObject()
+                                .put("drug_name", "종료약")
+                                .put("start_date", "2026-09-01")
+                                .put("end_date", "2026-10-01")
+                                .put("status", "ENDED")));
         SettingsContracts.ShareDocument document = SettingsContracts.readShare(response);
         assertTrue(document.text().contains("메트포르민정"));
+        assertTrue(document.text().contains("종료약"));
+        assertEquals(2, document.medications.size());
+        assertFalse(document.medications.get(0).ended);
+        assertEquals("1회 1 · 아침", document.medications.get(0).detail);
+        assertTrue(document.medications.get(1).ended);
         assertNull(document.records);
         assertNull(document.adherence);
     }
@@ -167,6 +198,63 @@ public class ApiContractTest {
     }
 
     @Test
+    public void guardianShareFieldsStayOffTheSelfRow() throws Exception {
+        JSONArray array = new JSONArray()
+                .put(new JSONObject()
+                        .put("patient_id", 1)
+                        .put("name", "홍길동")
+                        .put("birth_date", "1950-01-01")
+                        .put("has_account", true)
+                        .put("my_role", "SELF"))
+                .put(new JSONObject()
+                        .put("patient_id", 1)
+                        .put("name", "홍길동")
+                        .put("birth_date", "1950-01-01")
+                        .put("has_account", true)
+                        .put("my_role", "GUARDIAN")
+                        .put("link_id", 4)
+                        .put("permission_scope", "READ_WRITE")
+                        .put("relationship", "자녀")
+                        .put("shared_items", new JSONArray()
+                                .put("PERSONAL_INFO")
+                                .put("MED_INFO")
+                                .put("PHOTO")
+                                .put("DOSE_RECORD"))
+                        .put("phone_masked", "010-****-5678"));
+        List<SettingsContracts.ManagedPatient> rows = SettingsContracts.readManagedPatients(array);
+        assertNull(rows.get(0).sharedItems);
+        assertNull(rows.get(0).phoneMasked);
+        assertNull(rows.get(0).relationship);
+        assertEquals("자녀", rows.get(1).relationship);
+        assertEquals("010-****-5678", rows.get(1).phoneMasked);
+        assertEquals(4, rows.get(1).sharedItems.size());
+        assertTrue(rows.get(1).sharedItems.contains("PHOTO"));
+
+        JSONArray links = new JSONArray().put(new JSONObject()
+                .put("link_id", 4)
+                .put("guardian_name", "김*호")
+                .put("guardian_login_id", "testguardian1")
+                .put("status", "ACTIVE")
+                .put("permission_scope", "READ_WRITE")
+                .put("relationship", "자녀")
+                .put("shared_items", new JSONArray().put("PERSONAL_INFO").put("MED_INFO")));
+        SettingsContracts.GuardianLink active = SettingsContracts.readGuardianLinks(links).get(0);
+        assertEquals("자녀", active.relationship);
+        assertEquals(2, active.sharedItems.size());
+
+        JSONArray inactive = new JSONArray().put(new JSONObject()
+                .put("link_id", 5)
+                .put("guardian_name", "김*호")
+                .put("guardian_login_id", "testguardian1")
+                .put("status", "REJECTED")
+                .put("permission_scope", "READ_WRITE")
+                .put("shared_items", new JSONArray()));
+        SettingsContracts.GuardianLink rejected = SettingsContracts.readGuardianLinks(inactive).get(0);
+        assertNull(rejected.relationship);
+        assertTrue(rejected.sharedItems.isEmpty());
+    }
+
+    @Test
     public void agreementsMapWithdrawalWithoutServiceNotice() throws Exception {
         JSONArray array = new JSONArray()
                 .put(agreement("TOS", 1, false))
@@ -180,6 +268,62 @@ public class ApiContractTest {
     }
 
     @Test
+    public void phoneVerificationWithoutMessageTextStaysCodeEntry() throws Exception {
+        AuthContracts.PhoneVerification started = AuthContracts.readPhoneVerification(new JSONObject()
+                .put("verification_id", 5)
+                .put("expires_in", 300));
+        assertFalse(started.outboundSms());
+        assertEquals(5L, started.verificationId);
+        assertEquals(300L, started.expiresIn);
+        assertNull(started.messageText);
+        assertNull(started.messageTo);
+        JSONObject confirm = AuthContracts.confirmBody("000000");
+        assertEquals("000000", confirm.getString("code"));
+        assertFalse(confirm.has("phone"));
+    }
+
+    @Test
+    public void phoneVerificationWithMessageTextIsOutboundSms() throws Exception {
+        AuthContracts.PhoneVerification started = AuthContracts.readPhoneVerification(new JSONObject()
+                .put("verification_id", 5)
+                .put("expires_in", 300)
+                .put("message_text", "106746")
+                .put("message_to", "16663538"));
+        assertTrue(started.outboundSms());
+        assertEquals("106746", started.messageText);
+        assertEquals("16663538", started.messageTo);
+        assertEquals("1666 3538", AuthContracts.displayMessageTo(started.messageTo));
+        assertEquals(5L, AuthContracts.readVerificationId(new JSONObject()
+                .put("verification_id", 5)
+                .put("expires_in", 300)
+                .put("message_text", "106746")
+                .put("message_to", "16663538")));
+        JSONObject confirm = AuthContracts.confirmBody("106746", "01012345678");
+        assertEquals("106746", confirm.getString("code"));
+        assertEquals("01012345678", confirm.getString("phone"));
+    }
+
+    @Test
+    public void phoneVerificationRejectsAPartialOutboundMessage() throws Exception {
+        JSONObject textOnly = new JSONObject()
+                .put("verification_id", 5)
+                .put("expires_in", 300)
+                .put("message_text", "106746");
+        JSONObject destinationOnly = new JSONObject()
+                .put("verification_id", 5)
+                .put("expires_in", 300)
+                .put("message_to", "16663538");
+        JSONObject shortCode = new JSONObject()
+                .put("verification_id", 5)
+                .put("expires_in", 300)
+                .put("message_text", "10674")
+                .put("message_to", "16663538");
+        assertEquals(ApiFailure.Kind.RESPONSE, rejectedVerification(textOnly));
+        assertEquals(ApiFailure.Kind.RESPONSE, rejectedVerification(destinationOnly));
+        assertEquals(ApiFailure.Kind.RESPONSE, rejectedVerification(shortCode));
+    }
+
+    @Test
     public void phoneDigitsAcceptOnly010ElevenDigits() {
         assertEquals("01012345678", AuthContracts.phoneDigits("010-1234-5678"));
         assertEquals("01012345678", AuthContracts.phoneDigits("010 1234 5678"));
@@ -187,6 +331,15 @@ public class ApiContractTest {
         assertNull(AuthContracts.phoneDigits("0111234567"));
         assertNull(AuthContracts.phoneDigits("010123456"));
         assertNull(AuthContracts.phoneDigits("010123456789"));
+    }
+
+    private static ApiFailure.Kind rejectedVerification(JSONObject response) throws Exception {
+        try {
+            AuthContracts.readPhoneVerification(response);
+        } catch (ApiException exception) {
+            return exception.failure();
+        }
+        throw new AssertionError("malformed phone verification was accepted");
     }
 
     private static SettingsContracts.ManagedPatient guardian(long id) throws Exception {

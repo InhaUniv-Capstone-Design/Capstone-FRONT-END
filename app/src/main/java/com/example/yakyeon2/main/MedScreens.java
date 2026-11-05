@@ -89,6 +89,8 @@ public final class MedScreens {
         void selectServerHistoryStatus(String statusOrNull);
 
         void selectServerHistoryRange(java.time.LocalDate from, java.time.LocalDate to);
+
+        void requireRegisteredPillbox(Runnable onReady);
     }
 
     private static final DateTimeFormatter DATE = DateTimeFormatter.ofPattern("yyyy.MM.dd");
@@ -558,7 +560,7 @@ public final class MedScreens {
             }
             switch (MedicationRules.validate(store.draft())) {
                 case NOT_CONFIRMED:
-                    ShortMessage.show(anchor, activity.getString(R.string.med_need_confirm));
+                    showNeedConfirm(activity);
                     return;
                 case MISSING_TIME:
                 case TOO_CLOSE:
@@ -582,7 +584,7 @@ public final class MedScreens {
                 host.showMessage(activity.getString(R.string.med_local_saved));
                 break;
             case NOT_CONFIRMED:
-                ShortMessage.show(anchor, activity.getString(R.string.med_need_confirm));
+                showNeedConfirm(activity);
                 break;
             case MISSING_TIME:
             case TOO_CLOSE:
@@ -607,6 +609,25 @@ public final class MedScreens {
             return;
         }
         showTimeError(activity);
+    }
+
+    private static void showNeedConfirm(AppCompatActivity activity) {
+        ConfirmDialog.show(
+                activity,
+                activity.getString(R.string.med_need_confirm_body),
+                "",
+                activity.getString(R.string.action_confirm),
+                null,
+                new ConfirmDialog.Callback() {
+                    @Override
+                    public void onConfirm() {
+                    }
+
+                    @Override
+                    public void onCancel() {
+                    }
+                }
+        );
     }
 
     private static void showTimeError(AppCompatActivity activity) {
@@ -655,19 +676,13 @@ public final class MedScreens {
             YakyeonSession session,
             Host host
     ) {
-        if (host.usesServerRecords()) {
+        host.requireRegisteredPillbox(() -> {
+            if (!host.usesServerRecords() && session.occupiedSlotCount() >= session.slotCount()) {
+                host.showMessage(activity.getString(R.string.med_slot_none_available));
+                return;
+            }
             host.openScreen(MedScreen.SLOT);
-            return;
-        }
-        if (!session.isPillboxConnected()) {
-            host.showMessage(activity.getString(R.string.pillbox_none));
-            return;
-        }
-        if (session.occupiedSlotCount() >= session.slotCount()) {
-            host.showMessage(activity.getString(R.string.med_slot_none_available));
-            return;
-        }
-        host.openScreen(MedScreen.SLOT);
+        });
     }
 
     private static void addEnvelope(
@@ -950,13 +965,9 @@ public final class MedScreens {
             save.setOnClickListener(v -> onSave.run());
         }
         android.widget.Button amount = root.findViewById(R.id.button_amount);
-        amount.setText(medicine.getAmount() == null
-                ? activity.getString(R.string.med_amount_unset)
-                : amountLabel(activity, medicine.getAmount()));
+        amount.setText(draftAmountLabel(activity, medicine));
         amount.setOnClickListener(v -> showAmountPicker(activity, medicine, () ->
-                amount.setText(medicine.getAmount() == null
-                        ? activity.getString(R.string.med_amount_unset)
-                        : amountLabel(activity, medicine.getAmount()))));
+                amount.setText(draftAmountLabel(activity, medicine))));
         bindRound(root.findViewById(R.id.check_morning), medicine, DoseRound.MORNING, root, activity);
         bindRound(root.findViewById(R.id.check_lunch), medicine, DoseRound.LUNCH, root, activity);
         bindRound(root.findViewById(R.id.check_evening), medicine, DoseRound.EVENING, root, activity);
@@ -1028,9 +1039,7 @@ public final class MedScreens {
         TextView period = root.findViewById(R.id.text_alarm_period);
         Runnable paint = () -> {
             name.setText(displayName(activity, medicine.getName()));
-            amount.setText(medicine.getAmount() == null
-                    ? activity.getString(R.string.med_amount_unset)
-                    : amountLabel(activity, medicine.getAmount()));
+            amount.setText(draftAmountLabel(activity, medicine));
             timing.setText(timingsText(activity, medicine.timings()));
             period.setText(periodLabel(activity, medicine));
             updateFrequency(activity, root, medicine);
@@ -1252,10 +1261,19 @@ public final class MedScreens {
     }
 
     private static String medicineDetail(AppCompatActivity activity, MedicineDraft medicine) {
-        String amount = medicine.getAmount() == null
-                ? activity.getString(R.string.med_amount_unset)
-                : amountLabel(activity, medicine.getAmount());
-        return amount + " · " + timingsText(activity, medicine.timings());
+        return draftAmountLabel(activity, medicine) + " · " + timingsText(activity, medicine.timings());
+    }
+
+    private static String draftAmountLabel(AppCompatActivity activity, MedicineDraft medicine) {
+        String quantity = medicine.getDoseText();
+        String unit = medicine.getDoseUnit();
+        if (quantity != null && !quantity.isEmpty() && unit != null) {
+            return quantity + unit;
+        }
+        if (medicine.getAmount() == null) {
+            return activity.getString(R.string.med_amount_unset);
+        }
+        return amountLabel(activity, medicine.getAmount());
     }
 
     private static String dateLabel(AppCompatActivity activity, String prefix, LocalDate date) {
@@ -1273,8 +1291,19 @@ public final class MedScreens {
         EditText number = row.findViewById(R.id.field_amount_number);
         TextView unitView = row.findViewById(R.id.text_amount_unit);
         DoseAmount current = medicine.getAmount();
-        String[] chosenUnit = new String[] {current == null ? null : current.unitText()};
-        number.setText(current == null ? "" : current.quantityText());
+        String unit = medicine.getDoseUnit();
+        if (unit == null && current != null) {
+            unit = current.unitText();
+        }
+        if (unit == null) {
+            unit = DoseAmount.UNIT_TABLET;
+        }
+        String[] chosenUnit = new String[] {unit};
+        String quantity = medicine.getDoseText();
+        if ((quantity == null || quantity.isEmpty()) && current != null) {
+            quantity = current.quantityText();
+        }
+        number.setText(quantity == null ? "" : quantity);
         paintUnit(activity, unitView, chosenUnit[0]);
         number.addTextChangedListener(new TextWatcher() {
             @Override
@@ -1321,11 +1350,17 @@ public final class MedScreens {
 
     private static void applyTypedAmount(MedicineDraft medicine, String raw, String unit) {
         String quantity = DoseAmount.canonicalQuantity(raw);
-        if (unit == null || quantity == null) {
+        String resolved = unit == null ? DoseAmount.UNIT_TABLET : unit;
+        if (quantity == null || !DoseAmount.knownUnit(resolved)) {
             medicine.setAmount(null);
             return;
         }
-        medicine.setAmount(DoseAmount.from(unit, quantity));
+        DoseAmount picked = DoseAmount.from(resolved, quantity);
+        if (picked != null) {
+            medicine.setAmount(picked);
+            return;
+        }
+        medicine.setFreeDose(quantity, resolved);
     }
 
     private static void warnInvalidAmount(
@@ -1339,7 +1374,7 @@ public final class MedScreens {
             return;
         }
         String quantity = DoseAmount.canonicalQuantity(text);
-        if (unit == null || quantity == null || DoseAmount.from(unit, quantity) == null) {
+        if (quantity == null) {
             ShortMessage.show(row, activity.getString(R.string.med_amount_rejected));
         }
     }
@@ -1372,13 +1407,24 @@ public final class MedScreens {
                 units
         ));
         DoseAmount current = medicine.getAmount();
+        String shownQuantity = medicine.getDoseText();
+        String shownUnit = medicine.getDoseUnit();
+        if ((shownQuantity == null || shownQuantity.isEmpty()) && current != null) {
+            shownQuantity = current.quantityText();
+        }
+        if (shownUnit == null && current != null) {
+            shownUnit = current.unitText();
+        }
+        if (shownUnit == null) {
+            shownUnit = DoseAmount.UNIT_TABLET;
+        }
         int unitIndex = 0;
-        if (current != null) {
-            number.setText(current.quantityText());
-            for (int index = 0; index < units.length; index++) {
-                if (units[index].equals(current.unitText())) {
-                    unitIndex = index;
-                }
+        if (shownQuantity != null && !shownQuantity.isEmpty()) {
+            number.setText(shownQuantity);
+        }
+        for (int index = 0; index < units.length; index++) {
+            if (units[index].equals(shownUnit)) {
+                unitIndex = index;
             }
         }
         unit.setSelection(unitIndex);
@@ -1414,12 +1460,17 @@ public final class MedScreens {
                 }
                 String raw = number.getText() == null ? "" : number.getText().toString();
                 String quantity = DoseAmount.canonicalQuantity(raw);
-                DoseAmount picked = quantity == null ? null : DoseAmount.from(units[unitPosition], quantity);
-                if (picked == null) {
+                String chosen = units[unitPosition];
+                if (quantity == null || !DoseAmount.knownUnit(chosen)) {
                     ShortMessage.show(column, activity.getString(R.string.med_amount_rejected));
                     return;
                 }
-                medicine.setAmount(picked);
+                DoseAmount picked = DoseAmount.from(chosen, quantity);
+                if (picked != null) {
+                    medicine.setAmount(picked);
+                } else {
+                    medicine.setFreeDose(quantity, chosen);
+                }
                 after.run();
                 dialog.dismiss();
             });

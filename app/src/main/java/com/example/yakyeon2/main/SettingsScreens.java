@@ -374,12 +374,26 @@ public final class SettingsScreens {
                     account.commitNotificationEdit(() -> preferences.setEndingSoon(checked))));
         page.addView(doses);
         LinearLayout pillboxCard = pillCard(activity, 12);
-        LinearLayout pillbox = toggleLine(activity, R.drawable.ic_settings_bottle, R.string.settings_noti_pillbox,
-                R.string.settings_noti_pillbox_help, preferences.isPillboxStatus(), checked ->
-                    account.commitNotificationEdit(() -> {
-                        preferences.setPillboxStatus(checked);
-                        host.refresh();
-                    }));
+        LinearLayout pillboxTrailing = new LinearLayout(activity);
+        pillboxTrailing.setOrientation(LinearLayout.HORIZONTAL);
+        pillboxTrailing.setGravity(Gravity.CENTER_VERTICAL);
+        pillboxTrailing.addView(pillSwitch(activity, preferences.isPillboxStatus(), checked ->
+                account.commitNotificationEdit(() -> {
+                    preferences.setPillboxStatus(checked);
+                    host.refresh();
+                })));
+        ImageView pillboxMore = chevron(activity);
+        LinearLayout.LayoutParams moreParams = new LinearLayout.LayoutParams(dp(activity, 16), dp(activity, 16));
+        moreParams.setMarginStart(dp(activity, 8));
+        pillboxTrailing.addView(pillboxMore, moreParams);
+        LinearLayout pillbox = pillRow(
+                activity,
+                R.drawable.ic_settings_bottle,
+                activity.getString(R.string.settings_noti_pillbox),
+                activity.getString(R.string.settings_noti_pillbox_help),
+                false,
+                pillboxTrailing
+        );
         tap(activity, pillbox, () -> host.openDetail(NOTI_DETAIL));
         pillboxCard.addView(pillbox);
         page.addView(pillboxCard);
@@ -1494,8 +1508,8 @@ public final class SettingsScreens {
         }
         if (marked) {
             button.setText(R.string.settings_consent_restore);
-            button.setBackgroundResource(R.drawable.bg_period_chip_on);
-            button.setTextColor(activity.getColor(R.color.white));
+            button.setBackgroundResource(R.drawable.bg_consent_agree);
+            button.setTextColor(activity.getColor(R.color.yakyeon_badge_bg));
         }
         return button;
     }

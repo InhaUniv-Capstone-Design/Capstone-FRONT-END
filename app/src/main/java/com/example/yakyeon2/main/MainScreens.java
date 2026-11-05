@@ -93,9 +93,11 @@ public final class MainScreens {
             YakyeonSession session,
             MedicationStore store,
             Host host,
-            boolean debuggable
+            boolean debuggable,
+            String userName
     ) {
         View root = LayoutInflater.from(activity).inflate(R.layout.screen_home, null);
+        paintGreeting(activity, root, userName);
         int count = session.medicationIds().size();
         TextView taking = root.findViewById(R.id.text_taking_count);
         taking.setText(activity.getString(R.string.home_taking_count, count));
@@ -172,9 +174,11 @@ public final class MainScreens {
             HomeContracts.Section<CareContracts.Summary> interactions,
             HomeContracts.Section<java.util.List<HomeContracts.Dose>> todayDoses,
             Host host,
-            boolean debuggable
+            boolean debuggable,
+            String userName
     ) {
         View root = LayoutInflater.from(activity).inflate(R.layout.screen_home, null);
+        paintGreeting(activity, root, userName);
         TextView taking = root.findViewById(R.id.text_taking_count);
         TextView progress = root.findViewById(R.id.text_progress);
         TextView interaction = root.findViewById(R.id.text_interaction);
@@ -357,7 +361,7 @@ public final class MainScreens {
         return names.toString();
     }
 
-    static String slotLabel(AppCompatActivity activity, String slot) {
+    public static String slotLabel(AppCompatActivity activity, String slot) {
         if (HomeContracts.SLOT_MORNING.equals(slot)) {
             return activity.getString(R.string.round_morning);
         }
@@ -870,7 +874,7 @@ public final class MainScreens {
             boolean writesAllowed,
             Host host
     ) {
-        if (view == CareView.ABSENT) {
+        if (view == CareView.ABSENT || view == CareView.LOADING) {
             return pillboxGate(activity, host);
         }
         View root = LayoutInflater.from(activity).inflate(R.layout.screen_pillbox, null);
@@ -887,9 +891,10 @@ public final class MainScreens {
                     : R.string.api_request_failed)
                     : message);
             status.setTextColor(activity.getColor(R.color.yakyeon_muted));
-            headline.setText(message == null || message.isEmpty()
-                    ? activity.getString(R.string.pillbox_unconfirmed)
-                    : message);
+            if (message == null || message.isEmpty()) {
+                return pillboxGate(activity, host);
+            }
+            headline.setText(message);
             settings.setVisibility(view == CareView.BLOCKED ? View.GONE : View.VISIBLE);
             settings.setOnClickListener(v -> host.openDetail(SettingsScreens.PILLBOX));
             return root;
@@ -1137,8 +1142,10 @@ public final class MainScreens {
         card.setLayoutParams(cardParams);
         menuRow(activity, card, R.drawable.ic_settings_person, R.string.settings_profile, 0,
                 () -> host.openDetail(PROFILE));
-        menuRow(activity, card, R.drawable.ic_settings_link, R.string.settings_link, 0,
-                () -> host.openDetail(LINK));
+        if (accountType != AccountType.SELF) {
+            menuRow(activity, card, R.drawable.ic_settings_link, R.string.settings_link, 0,
+                    () -> host.openDetail(LINK));
+        }
         menuRow(activity, card, R.drawable.ic_settings_bell, R.string.settings_noti, 0,
                 () -> host.openDetail(NOTIFICATIONS));
         menuRow(activity, card, R.drawable.ic_settings_share, R.string.settings_share, 0,
@@ -1181,6 +1188,15 @@ public final class MainScreens {
             return activity.getString(R.string.dev_tools_title);
         }
         return key == null ? "" : key;
+    }
+
+    private static void paintGreeting(AppCompatActivity activity, View root, String name) {
+        TextView greeting = root.findViewById(R.id.text_home_greeting);
+        if (name == null || name.trim().isEmpty()) {
+            greeting.setText(R.string.home_greeting);
+            return;
+        }
+        greeting.setText(activity.getString(R.string.home_greeting_named, name.trim()));
     }
 
     private static boolean paintRound(

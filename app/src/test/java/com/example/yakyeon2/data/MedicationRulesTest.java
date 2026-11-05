@@ -629,7 +629,8 @@ public class MedicationRulesTest {
         assertEquals(DoseAmount.UNIT_G, DoseAmount.G_1.unitText());
         assertEquals("0.5", DoseAmount.canonicalQuantity("0.50"));
         assertEquals("1", DoseAmount.canonicalQuantity("1.0"));
-        assertEquals(null, DoseAmount.canonicalQuantity("4"));
+        assertEquals("4", DoseAmount.canonicalQuantity("4"));
+        assertEquals("2.5", DoseAmount.canonicalQuantity("2.50"));
         assertEquals(null, DoseAmount.canonicalQuantity(""));
     }
 

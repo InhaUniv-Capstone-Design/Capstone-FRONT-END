@@ -114,16 +114,69 @@
                     android:text="@string/auth_request_code" />
             </LinearLayout>
 
-            <TextView
-                style="@style/Widget.Yakyeon.FieldLabel"
-                android:text="@string/auth_code_label" />
-
-            <com.example.yakyeon2.ui.YakyeonTextField
-                android:id="@+id/field_verification_code"
-                style="@style/Widget.Yakyeon.TextInput"
+            <LinearLayout
+                android:id="@+id/panel_verification_code"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="5dp" />
+                android:orientation="vertical">
+
+                <TextView
+                    style="@style/Widget.Yakyeon.FieldLabel"
+                    android:text="@string/auth_code_label" />
+
+                <com.example.yakyeon2.ui.YakyeonTextField
+                    android:id="@+id/field_verification_code"
+                    style="@style/Widget.Yakyeon.TextInput"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="5dp" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/panel_outbound_sms"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:background="@drawable/bg_sms_code"
+                android:orientation="vertical"
+                android:padding="16dp"
+                android:visibility="gone">
+
+                <TextView
+                    android:id="@+id/text_sms_guide"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:textColor="@color/yakyeon_text"
+                    android:textSize="14sp" />
+
+                <TextView
+                    android:id="@+id/text_sms_code"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:gravity="center"
+                    android:letterSpacing="0.2"
+                    android:textColor="@color/yakyeon_deep"
+                    android:textIsSelectable="true"
+                    android:textSize="32sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="@string/auth_sms_digits_only"
+                    android:textColor="@color/yakyeon_muted"
+                    android:textSize="12sp" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/button_open_sms"
+                    style="@style/Widget.Yakyeon.Button.Secondary"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:text="@string/auth_sms_open" />
+            </LinearLayout>
 
             <TextView
                 style="@style/Widget.Yakyeon.FieldLabel"

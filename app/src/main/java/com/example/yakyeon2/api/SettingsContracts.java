@@ -54,6 +54,7 @@ public final class SettingsContracts {
         public final String permissionScope;
         public final String relationship;
         public final List<String> sharedItems;
+        public final String phoneMasked;
 
         private ManagedPatient(
                 long patientId,
@@ -64,7 +65,8 @@ public final class SettingsContracts {
                 Long linkId,
                 String permissionScope,
                 String relationship,
-                List<String> sharedItems
+                List<String> sharedItems,
+                String phoneMasked
         ) {
             this.patientId = patientId;
             this.name = name;
@@ -75,6 +77,7 @@ public final class SettingsContracts {
             this.permissionScope = permissionScope;
             this.relationship = relationship;
             this.sharedItems = sharedItems;
+            this.phoneMasked = phoneMasked;
         }
     }
 
@@ -85,6 +88,7 @@ public final class SettingsContracts {
         public final String status;
         public final String permissionScope;
         public final String relationship;
+        public final List<String> sharedItems;
 
         private GuardianLink(
                 long linkId,
@@ -92,7 +96,8 @@ public final class SettingsContracts {
                 String guardianLoginId,
                 String status,
                 String permissionScope,
-                String relationship
+                String relationship,
+                List<String> sharedItems
         ) {
             this.linkId = linkId;
             this.guardianName = guardianName;
@@ -100,6 +105,7 @@ public final class SettingsContracts {
             this.status = status;
             this.permissionScope = permissionScope;
             this.relationship = relationship;
+            this.sharedItems = sharedItems;
         }
     }
 
@@ -160,7 +166,7 @@ public final class SettingsContracts {
         public final String periodFrom;
         public final String periodTo;
         public final List<String> records;
-        public final List<String> medications;
+        public final List<ShareMedicine> medications;
         public final List<String> interactions;
         public final String interactionDisclaimer;
         public final String adherence;
@@ -171,7 +177,7 @@ public final class SettingsContracts {
                 String periodFrom,
                 String periodTo,
                 List<String> records,
-                List<String> medications,
+                List<ShareMedicine> medications,
                 List<String> interactions,
                 String interactionDisclaimer,
                 String adherence
@@ -193,11 +199,36 @@ public final class SettingsContracts {
             line(text, "생년월일", birthDate);
             line(text, "기간", join(periodFrom, periodTo));
             section(text, "복약 기록", records);
-            section(text, "약", medications);
+            section(text, "약", medicineNames(medications));
             section(text, "병용금기", interactions);
             line(text, "안내", interactionDisclaimer);
             line(text, "복용률", adherence);
             return text.toString().trim();
+        }
+    }
+
+    public static final class ShareMedicine {
+        public final String name;
+        public final String detail;
+        public final String startDate;
+        public final String endDate;
+        public final boolean ended;
+        public final boolean statusKnown;
+
+        private ShareMedicine(
+                String name,
+                String detail,
+                String startDate,
+                String endDate,
+                boolean ended,
+                boolean statusKnown
+        ) {
+            this.name = name;
+            this.detail = detail == null ? "" : detail;
+            this.startDate = startDate;
+            this.endDate = endDate;
+            this.ended = ended;
+            this.statusKnown = statusKnown;
         }
     }
 
@@ -228,7 +259,8 @@ public final class SettingsContracts {
                     JsonReads.optionalPositiveId(item, "link_id"),
                     JsonReads.optionalText(item, "permission_scope"),
                     JsonReads.optionalText(item, "relationship"),
-                    JsonReads.optionalStrings(item, "shared_items")
+                    JsonReads.optionalStrings(item, "shared_items"),
+                    JsonReads.optionalText(item, "phone_masked")
             ));
         }
         return rows;
@@ -264,7 +296,8 @@ public final class SettingsContracts {
                     JsonReads.text(item, "guardian_login_id"),
                     JsonReads.text(item, "status"),
                     JsonReads.text(item, "permission_scope"),
-                    JsonReads.optionalText(item, "relationship")
+                    JsonReads.optionalText(item, "relationship"),
+                    JsonReads.optionalStrings(item, "shared_items")
             ));
         }
         return rows;
@@ -504,7 +537,66 @@ public final class SettingsContracts {
         return lines;
     }
 
-    private static List<String> readMedications(JSONObject response) throws ApiException {
+    public static List<ShareMedicine> shareMedicines(List<HomeContracts.Medication> medications) {
+        List<ShareMedicine> lines = new ArrayList<>();
+        if (medications == null) {
+            return lines;
+        }
+        for (HomeContracts.Medication medication : medications) {
+            if (medication == null || medication.drugName == null || medication.drugName.trim().isEmpty()) {
+                continue;
+            }
+            boolean ended = HomeContracts.STATUS_ENDED.equals(medication.status);
+            String end = medication.endDate;
+            if (ended && medication.endedOn != null && !medication.endedOn.trim().isEmpty()) {
+                end = medication.endedOn.trim();
+            }
+            lines.add(new ShareMedicine(
+                    medication.drugName.trim(),
+                    catalogDetail(medication),
+                    medication.startDate,
+                    end,
+                    ended,
+                    true
+            ));
+        }
+        return lines;
+    }
+
+    private static String catalogDetail(HomeContracts.Medication medication) {
+        StringBuilder detail = new StringBuilder();
+        if (medication.dosePerIntake != null && !medication.dosePerIntake.isEmpty()) {
+            detail.append("1회 ").append(medication.dosePerIntake);
+        }
+        if (medication.timingSlots != null && !medication.timingSlots.isEmpty()) {
+            if (detail.length() > 0) {
+                detail.append(" · ");
+            }
+            for (int index = 0; index < medication.timingSlots.size(); index++) {
+                if (index > 0) {
+                    detail.append(", ");
+                }
+                detail.append(slotLabel(medication.timingSlots.get(index)));
+            }
+        }
+        return detail.toString();
+    }
+
+    private static List<String> medicineNames(List<ShareMedicine> medications) {
+        if (medications == null) {
+            return null;
+        }
+        List<String> names = new ArrayList<>();
+        for (ShareMedicine medicine : medications) {
+            if (medicine == null || medicine.name == null || medicine.name.isEmpty()) {
+                continue;
+            }
+            names.add(medicine.name);
+        }
+        return names;
+    }
+
+    private static List<ShareMedicine> readMedications(JSONObject response) throws ApiException {
         if (!response.has("medications") || response.isNull("medications")) {
             return null;
         }
@@ -512,17 +604,82 @@ public final class SettingsContracts {
         if (array == null) {
             throw ApiException.response(200);
         }
-        List<String> lines = new ArrayList<>();
+        List<ShareMedicine> lines = new ArrayList<>();
         for (int index = 0; index < array.length(); index++) {
             JSONObject item = array.optJSONObject(index);
             if (item == null) {
                 throw ApiException.response(200);
             }
-            String name = JsonReads.optionalText(item, "drug_name");
-            String end = JsonReads.optionalText(item, "end_date");
-            lines.add(end == null || end.isEmpty() ? blank(name) : blank(name) + " (" + end + ")");
+            String name = firstName(item);
+            String status = JsonReads.optionalText(item, "status");
+            boolean known = status != null && !status.trim().isEmpty();
+            boolean ended = known && "ENDED".equalsIgnoreCase(status.trim());
+            lines.add(new ShareMedicine(
+                    blank(name),
+                    medicineDetail(item),
+                    JsonReads.optionalText(item, "start_date"),
+                    JsonReads.optionalText(item, "end_date"),
+                    ended,
+                    known
+            ));
         }
         return lines;
+    }
+
+    private static String firstName(JSONObject item) throws ApiException {
+        String drug = JsonReads.optionalText(item, "drug_name");
+        if (drug != null && !drug.trim().isEmpty()) {
+            return drug.trim();
+        }
+        String product = JsonReads.optionalText(item, "product_name");
+        if (product != null && !product.trim().isEmpty()) {
+            return product.trim();
+        }
+        String input = JsonReads.optionalText(item, "input_name");
+        if (input != null && !input.trim().isEmpty()) {
+            return input.trim();
+        }
+        return JsonReads.optionalText(item, "name");
+    }
+
+    private static String medicineDetail(JSONObject item) throws ApiException {
+        StringBuilder detail = new StringBuilder();
+        String dose = JsonReads.optionalDecimal(item, "dose_per_intake");
+        if (dose != null && !dose.isEmpty()) {
+            detail.append("1회 ").append(dose);
+        }
+        List<String> slots = JsonReads.optionalStrings(item, "timing_slots");
+        if (slots != null && !slots.isEmpty()) {
+            if (detail.length() > 0) {
+                detail.append(" · ");
+            }
+            for (int index = 0; index < slots.size(); index++) {
+                if (index > 0) {
+                    detail.append(", ");
+                }
+                detail.append(slotLabel(slots.get(index)));
+            }
+        }
+        return detail.toString();
+    }
+
+    private static String slotLabel(String slot) {
+        if (slot == null) {
+            return "";
+        }
+        if ("MORNING".equals(slot)) {
+            return "아침";
+        }
+        if ("LUNCH".equals(slot)) {
+            return "점심";
+        }
+        if ("DINNER".equals(slot)) {
+            return "저녁";
+        }
+        if ("BEDTIME".equals(slot)) {
+            return "취침";
+        }
+        return slot;
     }
 
     private static List<String> readInteractionLines(JSONArray array, boolean present) throws ApiException {

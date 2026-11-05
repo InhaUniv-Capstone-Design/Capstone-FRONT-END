@@ -93,7 +93,7 @@ public enum DoseAmount {
     }
 
     /**
-     * Keypad text that matches a stored quantity. {@code 1.0} and {@code 0.50} count as 1 and 0.5.
+     * Any positive amount. {@code 1.0} and {@code 0.50} become 1 and 0.5. Zero and blank text do not.
      */
     public static String canonicalQuantity(String raw) {
         if (raw == null) {
@@ -109,19 +109,26 @@ public enum DoseAmount {
         } catch (NumberFormatException ex) {
             return null;
         }
-        if (value.compareTo(new java.math.BigDecimal("0.5")) == 0) {
-            return "0.5";
+        if (value.signum() <= 0) {
+            return null;
         }
-        if (value.compareTo(java.math.BigDecimal.ONE) == 0) {
-            return "1";
+        String plain = value.stripTrailingZeros().toPlainString();
+        if (plain.length() > 16) {
+            return null;
         }
-        if (value.compareTo(new java.math.BigDecimal("2")) == 0) {
-            return "2";
+        return plain;
+    }
+
+    public static boolean knownUnit(String unit) {
+        if (unit == null) {
+            return false;
         }
-        if (value.compareTo(new java.math.BigDecimal("3")) == 0) {
-            return "3";
+        for (String item : units()) {
+            if (item.equals(unit)) {
+                return true;
+            }
         }
-        return null;
+        return false;
     }
 
     public static String[] quantitiesFor(String unit) {

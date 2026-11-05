@@ -6,14 +6,6 @@
     android:orientation="vertical"
     android:padding="16dp">
 
-    <TextView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:lineSpacingExtra="4sp"
-        android:text="@string/med_name_example_note"
-        android:textColor="@color/yakyeon_muted"
-        android:textSize="12sp" />
-
     <EditText
         android:id="@+id/field_name_query"
         android:layout_width="match_parent"

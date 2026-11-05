@@ -186,7 +186,7 @@ public final class ApiClient {
             throws ApiException {
         HttpURLConnection connection = null;
         try {
-            connection = (HttpURLConnection) new URL(ApiConfig.BASE_URL + path).openConnection();
+            connection = (HttpURLConnection) endpoint(path).openConnection();
             connection.setConnectTimeout(CONNECT_TIMEOUT_MS);
             connection.setReadTimeout(READ_TIMEOUT_MS);
             connection.setInstanceFollowRedirects(false);
@@ -262,7 +262,7 @@ public final class ApiClient {
     ) throws ApiException {
         HttpURLConnection connection = null;
         try {
-            connection = (HttpURLConnection) new URL(ApiConfig.BASE_URL + path).openConnection();
+            connection = (HttpURLConnection) endpoint(path).openConnection();
             connection.setConnectTimeout(CONNECT_TIMEOUT_MS);
             connection.setReadTimeout(READ_TIMEOUT_MS);
             connection.setInstanceFollowRedirects(false);
@@ -365,6 +365,22 @@ public final class ApiClient {
         } catch (JSONException exception) {
             return null;
         }
+    }
+
+    /**
+     * Joins the single base URL with an API path. A trailing slash on the base is removed
+     * so {@code /terms} is not requested as {@code //terms}.
+     */
+    static URL endpoint(String path) throws IOException {
+        String base = ApiConfig.BASE_URL == null ? "" : ApiConfig.BASE_URL.trim();
+        while (base.endsWith("/")) {
+            base = base.substring(0, base.length() - 1);
+        }
+        String suffix = path == null ? "" : path.trim();
+        if (!suffix.startsWith("/")) {
+            suffix = "/" + suffix;
+        }
+        return new URL(base + suffix);
     }
 
     private static String read(InputStream stream) throws IOException {

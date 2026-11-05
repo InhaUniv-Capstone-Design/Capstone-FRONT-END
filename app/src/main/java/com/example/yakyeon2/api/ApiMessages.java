@@ -70,7 +70,7 @@ public final class ApiMessages {
             return "존재하지 않는 복약자입니다.";
         }
         if (ApiCodes.SHARE_NOT_GRANTED.equals(code)) {
-            return "복약자가 공유하지 않은 항목입니다.";
+            return "복약자가 공유를 허용하지 않은 정보입니다.";
         }
         if (ApiCodes.INSUFFICIENT_PERMISSION.equals(code)) {
             return "이 복약자의 데이터에 대해 해당 작업을 할 권한이 없습니다.";

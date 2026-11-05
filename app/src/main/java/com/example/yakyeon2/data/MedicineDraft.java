@@ -14,6 +14,7 @@ public final class MedicineDraft {
     private boolean confirmed;
     private Long drugId;
     private String doseText;
+    private String doseUnit;
     private boolean prn;
     private String mealRelation;
     private Integer mealOffsetMin;
@@ -41,6 +42,23 @@ public final class MedicineDraft {
 
     public void setDoseText(String doseText) {
         this.doseText = doseText;
+    }
+
+    public String getDoseUnit() {
+        return doseUnit;
+    }
+
+    public boolean hasDose() {
+        if (amount != null) {
+            return true;
+        }
+        return doseText != null && !doseText.isEmpty() && DoseAmount.knownUnit(doseUnit);
+    }
+
+    public void setFreeDose(String quantity, String unit) {
+        this.doseText = quantity;
+        this.doseUnit = unit;
+        this.amount = DoseAmount.from(unit, quantity);
     }
 
     public boolean isPrn() {
@@ -75,7 +93,13 @@ public final class MedicineDraft {
 
     public void setAmount(DoseAmount amount) {
         this.amount = amount;
-        this.doseText = null;
+        if (amount == null) {
+            this.doseText = null;
+            this.doseUnit = null;
+            return;
+        }
+        this.doseText = amount.quantityText();
+        this.doseUnit = amount.unitText();
     }
 
     public EnumSet<DoseRound> rounds() {

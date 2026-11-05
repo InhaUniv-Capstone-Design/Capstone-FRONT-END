@@ -73,6 +73,36 @@ public final class AuthContracts {
         }
     }
 
+    /**
+     * Phone verification start. {@code messageText} is present only when the server
+     * expects the user to text that code to {@code messageTo}. A response without it
+     * is the older code-entry flow.
+     */
+    public static final class PhoneVerification {
+        public final long verificationId;
+        public final long expiresIn;
+        public final String messageText;
+        public final String messageTo;
+
+        private PhoneVerification(long verificationId, long expiresIn, String messageText, String messageTo) {
+            this.verificationId = verificationId;
+            this.expiresIn = expiresIn;
+            this.messageText = messageText;
+            this.messageTo = messageTo;
+        }
+
+        public boolean outboundSms() {
+            return messageText != null;
+        }
+    }
+
+    public static String displayMessageTo(String digits) {
+        if (digits != null && digits.length() == 8) {
+            return digits.substring(0, 4) + " " + digits.substring(4);
+        }
+        return digits == null ? "" : digits;
+    }
+
     public static boolean callsServerLogout(String refreshToken) {
         return refreshToken != null && !refreshToken.isEmpty();
     }
@@ -184,18 +214,40 @@ public final class AuthContracts {
     }
 
     public static long readVerificationId(JSONObject response) throws ApiException {
+        return readPhoneVerification(response).verificationId;
+    }
+
+    public static PhoneVerification readPhoneVerification(JSONObject response) throws ApiException {
         JsonReads.object(response);
         long expires = JsonReads.number(response, "expires_in");
         if (expires < 1L) {
             throw ApiException.response(200);
         }
-        return JsonReads.positiveId(response, "verification_id");
+        long id = JsonReads.positiveId(response, "verification_id");
+        String messageText = JsonReads.optionalText(response, "message_text");
+        String messageTo = JsonReads.optionalText(response, "message_to");
+        if (messageText == null && messageTo == null) {
+            return new PhoneVerification(id, expires, null, null);
+        }
+        if (messageText == null || messageTo == null
+                || !messageText.matches("\\d{6}")
+                || !messageTo.matches("\\d+")) {
+            throw ApiException.response(200);
+        }
+        return new PhoneVerification(id, expires, messageText, messageTo);
     }
 
     public static JSONObject confirmBody(String code) throws ApiException {
+        return confirmBody(code, null);
+    }
+
+    public static JSONObject confirmBody(String code, String phone) throws ApiException {
         JSONObject body = new JSONObject();
         try {
             body.put("code", code);
+            if (phone != null && !phone.isEmpty()) {
+                body.put("phone", phone);
+            }
         } catch (JSONException exception) {
             throw ApiException.local();
         }

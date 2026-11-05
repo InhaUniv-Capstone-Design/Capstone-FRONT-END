@@ -40,12 +40,15 @@ public final class ShareSummaryExporter {
     }
 
     public static void open(AppCompatActivity activity, MedicationStore store, ClinicalShareOptions options) {
-        ShareSummary summary = ShareSummary.build(
+        open(activity, ShareSummary.build(
                 store,
                 options,
                 null,
                 LocalDate.now(ZoneId.systemDefault())
-        );
+        ));
+    }
+
+    public static void open(AppCompatActivity activity, ShareSummary summary) {
         Bitmap bitmap = ShareSummaryPage.render(activity, summary);
         ByteArrayOutputStream encoded = new ByteArrayOutputStream();
         bitmap.compress(Bitmap.CompressFormat.PNG, 100, encoded);

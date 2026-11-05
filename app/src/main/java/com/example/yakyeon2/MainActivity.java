@@ -1,9 +1,12 @@
 package com.example.yakyeon2;
 
+import android.Manifest;
 import android.app.Dialog;
 import android.content.pm.ApplicationInfo;
+import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 import android.view.View;
 import android.widget.FrameLayout;
@@ -49,6 +52,8 @@ import com.example.yakyeon2.data.LocalAccountData;
 import com.example.yakyeon2.data.LocalAppSettings;
 import com.example.yakyeon2.data.NotificationPreferences;
 import com.example.yakyeon2.data.ProfileSnapshot;
+import com.example.yakyeon2.data.ShareSummary;
+import com.example.yakyeon2.share.ShareSummaryExporter;
 import com.example.yakyeon2.data.LocalMedicationState;
 import com.example.yakyeon2.data.LocalMedicineNames;
 import com.example.yakyeon2.data.YakyeonRepositoryProvider;
@@ -58,6 +63,7 @@ import com.example.yakyeon2.data.EnvelopeDraft;
 import com.example.yakyeon2.main.MainScreens;
 import com.example.yakyeon2.main.MedicineNamePicker;
 import com.example.yakyeon2.main.MedScreens;
+import com.example.yakyeon2.main.DoseCatchUpNotice;
 import com.example.yakyeon2.main.RecordScreens;
 import com.example.yakyeon2.main.SettingsScreens;
 import com.example.yakyeon2.navigation.MedScreen;
@@ -101,6 +107,7 @@ public class MainActivity extends AppCompatActivity
     private AuthContracts.PreparedTerms signupTerms;
     private long verificationId;
     private String verifiedPhone = "";
+    private AuthContracts.PhoneVerification phoneVerification;
     private final java.util.List<SettingsScreens.LinkLine> managedLines = new java.util.ArrayList<>();
     private final java.util.List<SettingsScreens.LinkLine> guardianLines = new java.util.ArrayList<>();
     private final java.util.List<SettingsContracts.AgreementRecord> agreementRecords = new java.util.ArrayList<>();
@@ -110,6 +117,7 @@ public class MainActivity extends AppCompatActivity
     private boolean agreementsReady;
     private SettingsScreens.DevicePanel devicePanel;
     private boolean deviceReady;
+    private boolean homeNameRequested;
     private boolean deviceWritesAllowed;
     private String deviceStatusMessage;
     private Long settingsPatientId;
@@ -154,6 +162,18 @@ public class MainActivity extends AppCompatActivity
     private final ActivityResultLauncher<String> prescriptionImage = registerForActivityResult(
             new ActivityResultContracts.GetContent(),
             this::onPrescriptionChosen
+    );
+    private final java.util.Set<Long> catchUpAsked = new java.util.HashSet<>();
+    private HomeContracts.Dose pendingCatchUp;
+    private Dialog catchUpDialog;
+    private boolean noticePermissionAsked;
+    private final ActivityResultLauncher<String> notificationPermission = registerForActivityResult(
+            new ActivityResultContracts.RequestPermission(),
+            granted -> {
+                if (granted) {
+                    postCatchUpNotice(pendingCatchUp);
+                }
+            }
     );
     private boolean notificationReady;
     private Snackbar requestProgress;
@@ -333,16 +353,20 @@ public class MainActivity extends AppCompatActivity
         showProgress(getString(R.string.auth_login_loading));
         ApiClient.execute(() -> {
             try {
-                long id = AuthApi.sendPhoneCode(getApplicationContext(), digits);
+                AuthContracts.PhoneVerification started = AuthApi.sendPhoneCode(getApplicationContext(), digits);
                 runOnUiThread(() -> {
                     authRequestInFlight = false;
                     clearProgress();
                     if (!isAlive()) {
                         return;
                     }
-                    verificationId = id;
+                    verificationId = started.verificationId;
                     verifiedPhone = digits;
-                    ShortMessage.show(screenContainer, getString(R.string.auth_code_sent));
+                    phoneVerification = started;
+                    AuthScreens.applyPhoneVerification(this, screenContainer, started, this);
+                    if (!started.outboundSms()) {
+                        ShortMessage.show(screenContainer, getString(R.string.auth_code_sent));
+                    }
                 });
             } catch (ApiException exception) {
                 runOnUiThread(() -> {
@@ -557,13 +581,20 @@ public class MainActivity extends AppCompatActivity
             );
             return;
         }
-        if (code == null || code.trim().isEmpty()) {
-            ShortMessage.show(screenContainer, getString(R.string.auth_code_need));
-            return;
-        }
-        if (!AuthContracts.isVerificationCode(code.trim())) {
-            ShortMessage.show(screenContainer, getString(R.string.auth_code_format));
-            return;
+        boolean outboundSms = phoneVerification != null && phoneVerification.outboundSms();
+        String verificationCode;
+        if (outboundSms) {
+            verificationCode = phoneVerification.messageText;
+        } else {
+            if (code == null || code.trim().isEmpty()) {
+                ShortMessage.show(screenContainer, getString(R.string.auth_code_need));
+                return;
+            }
+            if (!AuthContracts.isVerificationCode(code.trim())) {
+                ShortMessage.show(screenContainer, getString(R.string.auth_code_format));
+                return;
+            }
+            verificationCode = code.trim();
         }
         String accountType = AccountRoles.toServer(
                 YakyeonRepositoryProvider.get().signupDraft().getAccountType()
@@ -579,20 +610,23 @@ public class MainActivity extends AppCompatActivity
         showProgress(getString(R.string.auth_login_loading));
         String loginId = id.trim();
         String birth = AuthContracts.isoDate(birthdate);
-        String verificationCode = code.trim();
         ApiClient.execute(() -> {
             try {
                 AuthContracts.PhoneConfirm confirm = AuthApi.confirmPhone(
                         getApplicationContext(),
                         verificationId,
-                        verificationCode
+                        verificationCode,
+                        digits
                 );
                 if (!confirm.verified) {
                     runOnUiThread(() -> {
                         authRequestInFlight = false;
                         clearProgress();
                         if (isAlive()) {
-                            ShortMessage.show(screenContainer, getString(R.string.auth_code_wrong));
+                            ShortMessage.show(
+                                    screenContainer,
+                                    getString(outboundSms ? R.string.auth_sms_pending : R.string.auth_code_wrong)
+                            );
                         }
                     });
                     return;
@@ -618,6 +652,7 @@ public class MainActivity extends AppCompatActivity
                     }
                     verificationId = 0L;
                     verifiedPhone = "";
+                    phoneVerification = null;
                     signupTerms = null;
                     authFlow.returnToLogin();
                     render();
@@ -730,7 +765,7 @@ public class MainActivity extends AppCompatActivity
                     this
             );
         } else if (AuthScreen.SIGNUP_FORM.equals(screen)) {
-            content = AuthScreens.signupForm(this, this);
+            content = AuthScreens.signupForm(this, this, phoneVerification);
         } else if (main) {
             content = mainTab(navigator.currentTab());
         } else if (MedScreen.isMedication(screen)) {
@@ -764,6 +799,7 @@ public class MainActivity extends AppCompatActivity
         }
         syncConsentDialog(screen);
         syncAlarmDialog(screen);
+        offerCatchUp();
     }
 
     private void syncConsentDialog(String screen) {
@@ -863,6 +899,7 @@ public class MainActivity extends AppCompatActivity
             return MainScreens.settings(this, session.getAccountType(), this);
         }
         if (isSignedIn()) {
+            ensureHomeName();
             return MainScreens.serverHome(
                     this,
                     homeView,
@@ -872,11 +909,12 @@ public class MainActivity extends AppCompatActivity
                     homeInteractions,
                     homeToday,
                     this,
-                    debuggable()
+                    debuggable(),
+                    signedInName()
             );
         }
         MedicationStore store = YakyeonRepositoryProvider.get().medications();
-        return MainScreens.home(this, session, store, this, debuggable());
+        return MainScreens.home(this, session, store, this, debuggable(), signedInName());
     }
 
     private View medicationScreen(String screen) {
@@ -1009,6 +1047,39 @@ public class MainActivity extends AppCompatActivity
     @Override
     public ProfileSnapshot currentProfile() {
         return AuthTokenStore.profile(this);
+    }
+
+    private String signedInName() {
+        ProfileSnapshot profile = currentProfile();
+        if (profile == null || profile.name == null) {
+            return null;
+        }
+        String name = profile.name.trim();
+        return name.isEmpty() ? null : name;
+    }
+
+    private void ensureHomeName() {
+        if (signedInName() != null || homeNameRequested) {
+            return;
+        }
+        homeNameRequested = true;
+        ApiClient.execute(() -> {
+            try {
+                ProfileSnapshot profile = UserApi.profile(getApplicationContext());
+                runOnUiThread(() -> {
+                    if (!isAlive()) {
+                        return;
+                    }
+                    AuthTokenStore.saveProfile(this, profile);
+                    applyStoredAccountType();
+                    if (navigator.isMainArea() && navigator.currentTab() == ScreenId.HOME) {
+                        refresh();
+                    }
+                });
+            } catch (ApiException exception) {
+                homeNameRequested = false;
+            }
+        });
     }
 
     @Override
@@ -1278,6 +1349,51 @@ public class MainActivity extends AppCompatActivity
         });
     }
 
+    private boolean returnedFromBackground;
+
+    @Override
+    protected void onPause() {
+        returnedFromBackground = true;
+        super.onPause();
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if (!returnedFromBackground || !isSignedIn() || !isAlive()) {
+            return;
+        }
+        returnedFromBackground = false;
+        reloadVisibleShareScope();
+    }
+
+    private void reloadVisibleShareScope() {
+        String screen = navigator.currentScreen();
+        if (needsServerHome(screen)) {
+            homeArmed = false;
+            ensureHomeLoaded();
+        }
+        if (MedScreen.SCHEDULE.equals(screen)) {
+            scheduleLoaded = false;
+            ensureScheduleLoaded();
+        }
+        if (MedScreen.HISTORY.equals(screen)) {
+            historyLoaded = false;
+            ensureHistoryLoaded();
+        }
+        if (navigator.isMainArea() && navigator.currentTab() == ScreenId.GRAPH) {
+            graphArmed = false;
+            prepareCareTabs();
+        } else if (navigator.isMainArea() && navigator.currentTab() == ScreenId.PILLBOX) {
+            pillboxArmed = false;
+            prepareCareTabs();
+        }
+        if (MainScreens.LINK.equals(screen) || SettingsScreens.PILLBOX.equals(screen)) {
+            accountSyncKey = null;
+            maybeSyncAccountScreens(screen);
+        }
+    }
+
     private void maybeSyncAccountScreens(String screen) {
         if (!isSignedIn()) {
             accountSyncKey = null;
@@ -1442,6 +1558,7 @@ public class MainActivity extends AppCompatActivity
         careReady = false;
         agreementsReady = false;
         deviceReady = false;
+        homeNameRequested = false;
         devicePanel = null;
         deviceWritesAllowed = false;
         deviceStatusMessage = null;
@@ -2288,6 +2405,8 @@ public class MainActivity extends AppCompatActivity
         boolean period = options.isIncludeSpan();
         boolean interactions = options.isIncludeDur();
         boolean adherence = options.isIncludeAdherence();
+        boolean includeCurrent = options.isIncludeCurrent();
+        boolean includeFinished = options.isIncludeFinished();
         String accountType = AuthTokenStore.accountType(this);
         ApiClient.execute(() -> {
             try {
@@ -2313,6 +2432,17 @@ public class MainActivity extends AppCompatActivity
                     });
                     return;
                 }
+                SettingsContracts.ManagedPatient sharePatient = findPatient(patients, target.patientId);
+                if (CareContracts.shareSummaryWithheld(sharePatient)) {
+                    runOnUiThread(() -> {
+                        finishAccountRequest();
+                        if (!isAlive()) {
+                            return;
+                        }
+                        showNotice(getString(R.string.settings_share), getString(R.string.care_share_withheld));
+                    });
+                    return;
+                }
                 SettingsContracts.ShareDocument document = SettingsApi.shareSummary(
                         getApplicationContext(),
                         target.patientId,
@@ -2323,16 +2453,27 @@ public class MainActivity extends AppCompatActivity
                         interactions,
                         adherence
                 );
+                java.util.List<SettingsContracts.ShareMedicine> medicines = shareMedicines(
+                        target.patientId,
+                        document.medications
+                );
                 runOnUiThread(() -> {
                     finishAccountRequest();
                     if (!isAlive()) {
                         return;
                     }
-                    String text = document.text();
-                    showNotice(
-                            getString(R.string.settings_share),
-                            text.isEmpty() ? getString(R.string.settings_share_empty) : text
-                    );
+                    ShareSummaryExporter.open(this, ShareSummary.document(
+                            document.patientName,
+                            from,
+                            to,
+                            listedMedicines(medicines),
+                            includeCurrent,
+                            includeFinished,
+                            period,
+                            document.interactions,
+                            document.records,
+                            document.adherence
+                    ));
                 });
             } catch (ApiException exception) {
                 runOnUiThread(() -> {
@@ -2341,6 +2482,81 @@ public class MainActivity extends AppCompatActivity
                 });
             }
         });
+    }
+
+    private java.util.List<SettingsContracts.ShareMedicine> shareMedicines(
+            long patientId,
+            java.util.List<SettingsContracts.ShareMedicine> fromSummary
+    ) throws ApiException {
+        java.util.LinkedHashMap<Long, HomeContracts.Medication> byId = new java.util.LinkedHashMap<>();
+        addShareMedications(byId, HomeApi.medications(getApplicationContext(), patientId, null));
+        addShareMedications(byId, HomeApi.medications(
+                getApplicationContext(),
+                patientId,
+                HomeContracts.STATUS_ACTIVE
+        ));
+        addShareMedications(byId, HomeApi.medications(
+                getApplicationContext(),
+                patientId,
+                HomeContracts.STATUS_UPCOMING
+        ));
+        addShareMedications(byId, HomeApi.medications(
+                getApplicationContext(),
+                patientId,
+                HomeContracts.STATUS_ENDED
+        ));
+        java.util.List<SettingsContracts.ShareMedicine> catalog = SettingsContracts.shareMedicines(
+                new java.util.ArrayList<>(byId.values())
+        );
+        if (!catalog.isEmpty()) {
+            return catalog;
+        }
+        return fromSummary == null ? java.util.Collections.emptyList() : fromSummary;
+    }
+
+    private static void addShareMedications(
+            java.util.Map<Long, HomeContracts.Medication> byId,
+            java.util.List<HomeContracts.Medication> medications
+    ) {
+        if (medications == null) {
+            return;
+        }
+        for (HomeContracts.Medication medication : medications) {
+            if (medication != null) {
+                byId.put(medication.medicationId, medication);
+            }
+        }
+    }
+
+    private static java.util.List<ShareSummary.ListedMedicine> listedMedicines(
+            java.util.List<SettingsContracts.ShareMedicine> medications
+    ) {
+        java.util.List<ShareSummary.ListedMedicine> listed = new java.util.ArrayList<>();
+        if (medications == null) {
+            return listed;
+        }
+        for (SettingsContracts.ShareMedicine medicine : medications) {
+            listed.add(new ShareSummary.ListedMedicine(
+                    medicine.name,
+                    medicine.detail,
+                    shareDay(medicine.startDate),
+                    shareDay(medicine.endDate),
+                    medicine.ended,
+                    medicine.statusKnown
+            ));
+        }
+        return listed;
+    }
+
+    private static java.time.LocalDate shareDay(String raw) {
+        if (raw == null || raw.trim().isEmpty()) {
+            return null;
+        }
+        try {
+            return java.time.LocalDate.parse(raw.trim());
+        } catch (java.time.format.DateTimeParseException exception) {
+            return null;
+        }
     }
 
     private void sendAgreement(String termsType, Long versionId, boolean agree) {
@@ -2426,34 +2642,21 @@ public class MainActivity extends AppCompatActivity
                 java.util.List<SettingsContracts.ManagedPatient> patients = SettingsApi.managedPatients(
                         getApplicationContext()
                 );
-                java.util.List<SettingsScreens.LinkLine> managed = new java.util.ArrayList<>();
+                java.util.List<SettingsContracts.ManagedPatient> guardianPatients = new java.util.ArrayList<>();
                 for (SettingsContracts.ManagedPatient patient : patients) {
-                    if (!SettingsContracts.GUARDIAN.equals(patient.myRole) || patient.linkId == null) {
-                        continue;
+                    if (SettingsContracts.GUARDIAN.equals(patient.myRole) && patient.linkId != null) {
+                        guardianPatients.add(patient);
                     }
-                    managed.add(new SettingsScreens.LinkLine(
-                            patient.linkId,
-                            patient.name,
-                            linkDetail(null, patient.permissionScope, patient.relationship),
-                            true
-                    ));
                 }
-                java.util.List<SettingsScreens.LinkLine> guardians = new java.util.ArrayList<>();
+                java.util.List<SettingsContracts.GuardianLink> guardianLinks = new java.util.ArrayList<>();
                 boolean patientAccount = AccountRoles.PATIENT.equals(accountType);
                 if (patientAccount) {
                     SettingsContracts.ResolvedPatient self = SettingsContracts.resolveSelf(patients);
                     if (self.resolution == SettingsContracts.Resolution.ONE) {
-                        for (SettingsContracts.GuardianLink link : SettingsApi.guardianLinks(
+                        guardianLinks.addAll(SettingsApi.guardianLinks(
                                 getApplicationContext(),
                                 self.patientId
-                        )) {
-                            guardians.add(new SettingsScreens.LinkLine(
-                                    link.linkId,
-                                    link.guardianName,
-                                    linkDetail(link.status, link.permissionScope, link.relationship),
-                                    SettingsContracts.ACTIVE.equals(link.status)
-                            ));
-                        }
+                        ));
                     }
                 }
                 boolean show = patientAccount;
@@ -2463,9 +2666,35 @@ public class MainActivity extends AppCompatActivity
                         return;
                     }
                     managedLines.clear();
-                    managedLines.addAll(managed);
+                    for (SettingsContracts.ManagedPatient patient : guardianPatients) {
+                        managedLines.add(new SettingsScreens.LinkLine(
+                                patient.linkId,
+                                patient.name,
+                                linkDetail(
+                                        null,
+                                        patient.permissionScope,
+                                        patient.relationship,
+                                        patient.phoneMasked,
+                                        shareText(patient.sharedItems)
+                                ),
+                                true
+                        ));
+                    }
                     guardianLines.clear();
-                    guardianLines.addAll(guardians);
+                    for (SettingsContracts.GuardianLink link : guardianLinks) {
+                        guardianLines.add(new SettingsScreens.LinkLine(
+                                link.linkId,
+                                link.guardianName,
+                                linkDetail(
+                                        link.status,
+                                        link.permissionScope,
+                                        link.relationship,
+                                        null,
+                                        shareText(link.sharedItems)
+                                ),
+                                SettingsContracts.ACTIVE.equals(link.status)
+                        ));
+                    }
                     showGuardians = show;
                     careReady = true;
                     if (MainScreens.LINK.equals(navigator.currentScreen())) {
@@ -2693,11 +2922,55 @@ public class MainActivity extends AppCompatActivity
         });
     }
 
-    private static String linkDetail(String status, String scope, String relationship) {
+    private String shareText(java.util.List<String> items) {
+        if (items == null) {
+            return null;
+        }
+        if (items.isEmpty()) {
+            return getString(R.string.care_share_none);
+        }
+        StringBuilder text = new StringBuilder();
+        for (String item : items) {
+            appendDetail(text, shareLabel(item));
+        }
+        return text.toString();
+    }
+
+    private String shareLabel(String item) {
+        if (CareContracts.PERSONAL_INFO.equals(item)) {
+            return getString(R.string.care_share_personal);
+        }
+        if (HomeContracts.MED_INFO.equals(item)) {
+            return getString(R.string.care_share_med);
+        }
+        if ("PHOTO".equals(item)) {
+            return getString(R.string.care_share_photo);
+        }
+        if (HomeContracts.DOSE_RECORD.equals(item)) {
+            return getString(R.string.care_share_dose);
+        }
+        if (CareContracts.DEVICE_EVENT.equals(item)) {
+            return getString(R.string.care_share_device);
+        }
+        if (CareContracts.DUR_INFO.equals(item)) {
+            return getString(R.string.care_share_dur);
+        }
+        return item;
+    }
+
+    private static String linkDetail(
+            String status,
+            String scope,
+            String relationship,
+            String phone,
+            String shares
+    ) {
         StringBuilder text = new StringBuilder();
         appendDetail(text, status);
         appendDetail(text, scope);
         appendDetail(text, relationship);
+        appendDetail(text, phone);
+        appendDetail(text, shares);
         return text.toString();
     }
 
@@ -2714,6 +2987,98 @@ public class MainActivity extends AppCompatActivity
     @Override
     public boolean usesServerRecords() {
         return isSignedIn();
+    }
+
+    @Override
+    public void requireRegisteredPillbox(Runnable onReady) {
+        if (!isSignedIn()) {
+            if (YakyeonRepositoryProvider.get().medications().pillboxConnected()) {
+                onReady.run();
+            } else {
+                showUnregisteredPillbox();
+            }
+            return;
+        }
+        if (hasRegisteredPillbox()) {
+            onReady.run();
+            return;
+        }
+        if (pillboxView == MainScreens.CareView.ABSENT && devicePanel == null) {
+            showUnregisteredPillbox();
+            return;
+        }
+        if (!beginAccountRequest(getString(R.string.med_into_pillbox))) {
+            return;
+        }
+        String accountType = AuthTokenStore.accountType(this);
+        ApiClient.execute(() -> {
+            try {
+                java.util.List<SettingsContracts.ManagedPatient> patients = SettingsApi.managedPatients(
+                        getApplicationContext()
+                );
+                SettingsContracts.ResolvedPatient target = SettingsContracts.resolveForSettings(
+                        patients,
+                        accountType
+                );
+                if (target.resolution != SettingsContracts.Resolution.ONE) {
+                    runOnUiThread(() -> {
+                        finishAccountRequest();
+                        if (isAlive()) {
+                            showUnregisteredPillbox();
+                        }
+                    });
+                    return;
+                }
+                SettingsContracts.ManagedPatient patient = findPatient(patients, target.patientId);
+                if (CareContracts.shareWithheld(patient, CareContracts.DEVICE_EVENT)) {
+                    runOnUiThread(() -> {
+                        finishAccountRequest();
+                        if (isAlive()) {
+                            showNotice(
+                                    getString(R.string.med_into_pillbox),
+                                    getString(R.string.care_share_withheld)
+                            );
+                        }
+                    });
+                    return;
+                }
+                SettingsApi.device(getApplicationContext(), target.patientId);
+                runOnUiThread(() -> {
+                    finishAccountRequest();
+                    if (isAlive()) {
+                        onReady.run();
+                    }
+                });
+            } catch (ApiException exception) {
+                runOnUiThread(() -> {
+                    finishAccountRequest();
+                    if (!isAlive()) {
+                        return;
+                    }
+                    if (ApiCodes.DEVICE_NOT_FOUND.equals(exception.code())) {
+                        forgetLocalPillbox();
+                        showUnregisteredPillbox();
+                        return;
+                    }
+                    if (exception.endsSession()) {
+                        showApiFailure(getString(R.string.med_into_pillbox), exception);
+                        return;
+                    }
+                    showNotice(getString(R.string.med_into_pillbox), careMessage(exception));
+                });
+            }
+        });
+    }
+
+    private boolean hasRegisteredPillbox() {
+        if (devicePanel != null) {
+            return true;
+        }
+        return pillboxSnapshot != null && pillboxSnapshot.device != null;
+    }
+
+    private void showUnregisteredPillbox() {
+        showNotice(getString(R.string.med_into_pillbox), getString(R.string.med_pillbox_unregistered));
     }
 
     @Override
@@ -2797,6 +3162,7 @@ public class MainActivity extends AppCompatActivity
                         prepared.prescription
                 );
                 StringBuilder partial = new StringBuilder();
+                boolean[] missingPillbox = {false};
                 if (prepared.schedule != null) {
                     try {
                         HomeApi.saveSchedule(getApplicationContext(), created.prescriptionId, prepared.schedule);
@@ -2825,11 +3191,15 @@ public class MainActivity extends AppCompatActivity
                             if (exception.endsSession()) {
                                 throw exception;
                             }
-                            if (partial.length() > 0) {
-                                partial.append('\n');
+                            if (ApiCodes.DEVICE_NOT_FOUND.equals(exception.code())) {
+                                missingPillbox[0] = true;
+                            } else {
+                                if (partial.length() > 0) {
+                                    partial.append('\n');
+                                }
+                                partial.append(getString(R.string.med_server_partial_slot));
+                                partial.append('\n').append(careMessage(exception));
                             }
-                            partial.append(getString(R.string.med_server_partial_slot));
-                            partial.append('\n').append(careMessage(exception));
                         }
                     }
                 }
@@ -2843,7 +3213,11 @@ public class MainActivity extends AppCompatActivity
                     }
                     YakyeonRepositoryProvider.get().medications().abandonDraft();
                     popTo(MedScreen.LIST);
-                    showMessage(notice);
+                    if (missingPillbox[0]) {
+                        showUnregisteredPillbox();
+                    } else {
+                        showMessage(notice);
+                    }
                     reloadServerSurfaces();
                 });
             } catch (ApiException exception) {
@@ -3038,10 +3412,6 @@ public class MainActivity extends AppCompatActivity
                 PatientGate gate = gatePatients();
                 if (gate.blocked != null) {
                     runOnUiThread(() -> finishHomeWrite(gate.blocked));
-                    return;
-                }
-                if (CareContracts.shareWithheld(gate.patient, HomeContracts.MED_INFO)) {
-                    runOnUiThread(() -> finishHomeWrite(getString(R.string.care_share_withheld)));
                     return;
                 }
                 String filename = "image/png".equals(mime) ? "prescription.png" : "prescription.jpg";
@@ -3481,7 +3851,13 @@ public class MainActivity extends AppCompatActivity
                 runOnUiThread(() -> applyHistory(epoch, MainScreens.CareView.READY, null, doses));
             } catch (ApiException exception) {
                 runOnUiThread(() -> {
-                    applyHistory(epoch, MainScreens.CareView.FAILED, careMessage(exception), null);
+                    MainScreens.CareView view = ApiCodes.SHARE_NOT_GRANTED.equals(exception.code())
+                            ? MainScreens.CareView.BLOCKED
+                            : MainScreens.CareView.FAILED;
+                    String text = ApiCodes.SHARE_NOT_GRANTED.equals(exception.code())
+                            ? getString(R.string.care_share_withheld)
+                            : careMessage(exception);
+                    applyHistory(epoch, view, text, null);
                     if (exception.endsSession()) {
                         showApiFailure(getString(R.string.med_history_title), exception);
                     }
@@ -3552,6 +3928,77 @@ public class MainActivity extends AppCompatActivity
         historyStatus = null;
         historyFrom = null;
         historyTo = null;
+    }
+
+    private void offerCatchUp() {
+        if (!isAlive() || !isSignedIn() || !homeWrites) {
+            return;
+        }
+        if (!navigator.isMainArea() || navigator.currentTab() != ScreenId.HOME) {
+            return;
+        }
+        if (homeToday == null || homeToday.kind != HomeContracts.Section.Kind.READY) {
+            return;
+        }
+        HomeContracts.Dose dose = HomeContracts.catchUpDose(homeToday.value, java.time.Instant.now());
+        if (dose == null) {
+            return;
+        }
+        notifyCatchUp(dose);
+        if (catchUpAsked.contains(dose.scheduledDoseId)) {
+            return;
+        }
+        if (catchUpDialog != null && catchUpDialog.isShowing()) {
+            return;
+        }
+        catchUpAsked.add(dose.scheduledDoseId);
+        String title = getString(
+                R.string.med_catchup_title,
+                HomeContracts.clock(dose.scheduledAt),
+                MainScreens.slotLabel(this, dose.timingSlot)
+        );
+        screenContainer.post(() -> {
+            if (!isAlive() || !navigator.isMainArea() || navigator.currentTab() != ScreenId.HOME) {
+                catchUpAsked.remove(dose.scheduledDoseId);
+                return;
+            }
+            if (catchUpDialog != null && catchUpDialog.isShowing()) {
+                return;
+            }
+            catchUpDialog = RecordScreens.askTakenTime(this, dose, this, title);
+            catchUpDialog.setOnDismissListener(dialog -> {
+                if (catchUpDialog == dialog) {
+                    catchUpDialog = null;
+                }
+            });
+        });
+    }
+
+    private void notifyCatchUp(HomeContracts.Dose dose) {
+        pendingCatchUp = dose;
+        if (Build.VERSION.SDK_INT >= 33
+                && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            if (!noticePermissionAsked) {
+                noticePermissionAsked = true;
+                notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS);
+            }
+            return;
+        }
+        postCatchUpNotice(dose);
+    }
+
+    private void postCatchUpNotice(HomeContracts.Dose dose) {
+        if (dose == null || !isAlive()) {
+            return;
+        }
+        String when = HomeContracts.clock(dose.scheduledAt);
+        String slot = MainScreens.slotLabel(this, dose.timingSlot);
+        DoseCatchUpNotice.post(
+                this,
+                dose,
+                getString(R.string.med_catchup_notice_title),
+                getString(R.string.med_catchup_notice_body, when, slot)
+        );
     }
 
     private java.util.List<HomeContracts.Prescription> prescriptionRows() {

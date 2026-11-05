@@ -169,6 +169,23 @@ public class CareContractTest {
         assertTrue(CareContracts.shareWithheld(withheld, CareContracts.DEVICE_EVENT));
         assertFalse(CareContracts.shareWithheld(granted, CareContracts.DUR_INFO));
         assertTrue(CareContracts.writesAllowed(granted));
+        SettingsContracts.ManagedPatient empty = patient("GUARDIAN", "READ_WRITE", new JSONArray());
+        assertTrue(CareContracts.shareWithheld(empty, CareContracts.PERSONAL_INFO));
+        assertTrue(CareContracts.shareWithheld(empty, HomeContracts.MED_INFO));
+        assertTrue(CareContracts.shareWithheld(empty, HomeContracts.DOSE_RECORD));
+        assertTrue(CareContracts.shareSummaryWithheld(empty));
+        SettingsContracts.ManagedPatient summary = patient(
+                "GUARDIAN",
+                "READ_WRITE",
+                new JSONArray().put("PERSONAL_INFO").put("MED_INFO").put("DUR_INFO")
+        );
+        assertFalse(CareContracts.shareSummaryWithheld(summary));
+        assertTrue(CareContracts.shareSummaryWithheld(granted));
+        assertFalse(CareContracts.shareSummaryWithheld(omitted));
+        assertEquals(
+                "복약자가 공유를 허용하지 않은 정보입니다.",
+                ApiMessages.fallback(ApiCodes.SHARE_NOT_GRANTED)
+        );
         assertEquals(
                 "이미 다른 약봉지가 배정된 칸입니다.",
                 ApiMessages.fallback(ApiCodes.COMPARTMENT_OCCUPIED)

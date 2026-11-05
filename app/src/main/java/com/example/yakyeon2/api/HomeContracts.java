@@ -490,6 +490,65 @@ public final class HomeContracts {
                 .format(DateTimeFormatter.ISO_OFFSET_DATE_TIME);
     }
 
+    public enum DoseFollowUp {
+        NONE,
+        ASK,
+        RECORDED
+    }
+
+    public static DoseFollowUp followUp(Dose dose, Instant now) {
+        if (dose == null || now == null) {
+            return DoseFollowUp.NONE;
+        }
+        if (dose.takenAt != null && !dose.takenAt.isEmpty()) {
+            return DoseFollowUp.RECORDED;
+        }
+        OffsetDateTime scheduled = parseOffset(dose.scheduledAt);
+        if (scheduled == null) {
+            return DoseFollowUp.NONE;
+        }
+        Instant start = scheduled.toInstant();
+        if (now.isBefore(start)) {
+            return DoseFollowUp.NONE;
+        }
+        OffsetDateTime close = parseOffset(dose.closeAt);
+        Instant end = close == null ? start.plus(3, ChronoUnit.HOURS) : close.toInstant();
+        if (now.isAfter(end)) {
+            return DoseFollowUp.NONE;
+        }
+        return DoseFollowUp.ASK;
+    }
+
+    public static String scheduleStatus(Dose dose, Instant now) {
+        if (dose == null) {
+            return STATUS_PENDING;
+        }
+        if (followUp(dose, now) == DoseFollowUp.ASK) {
+            return STATUS_MISSED;
+        }
+        return dose.status;
+    }
+
+    public static Dose catchUpDose(List<Dose> doses, Instant now) {
+        if (doses == null || now == null) {
+            return null;
+        }
+        Dose chosen = null;
+        Instant chosenAt = null;
+        for (Dose dose : doses) {
+            if (followUp(dose, now) != DoseFollowUp.ASK) {
+                continue;
+            }
+            OffsetDateTime scheduled = parseOffset(dose.scheduledAt);
+            Instant at = scheduled == null ? null : scheduled.toInstant();
+            if (chosen == null || (at != null && (chosenAt == null || at.isBefore(chosenAt)))) {
+                chosen = dose;
+                chosenAt = at;
+            }
+        }
+        return chosen;
+    }
+
     public static String clock(String iso) {
         OffsetDateTime parsed = parseOffset(iso);
         if (parsed == null) {

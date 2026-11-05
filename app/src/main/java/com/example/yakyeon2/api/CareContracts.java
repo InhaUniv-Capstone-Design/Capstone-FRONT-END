@@ -16,6 +16,7 @@ import java.util.List;
  */
 public final class CareContracts {
 
+    public static final String PERSONAL_INFO = "PERSONAL_INFO";
     public static final String DUR_INFO = "DUR_INFO";
     public static final String DEVICE_EVENT = "DEVICE_EVENT";
     public static final String READ_ONLY = "READ_ONLY";
@@ -242,7 +243,8 @@ public final class CareContracts {
 
     /**
      * A missing {@code shared_items} field is left to the server.
-     * A present list that omits the item is withheld before the call.
+     * A present list withholds every item it does not contain, including an empty list
+     * from a link created before the consent web.
      */
     public static boolean shareWithheld(SettingsContracts.ManagedPatient patient, String item) {
         if (patient == null || SettingsContracts.SELF.equals(patient.myRole)) {
@@ -252,6 +254,13 @@ public final class CareContracts {
             return false;
         }
         return !patient.sharedItems.contains(item);
+    }
+
+    /** Share summary needs personal info, medication info, and interaction info together. */
+    public static boolean shareSummaryWithheld(SettingsContracts.ManagedPatient patient) {
+        return shareWithheld(patient, PERSONAL_INFO)
+                || shareWithheld(patient, HomeContracts.MED_INFO)
+                || shareWithheld(patient, DUR_INFO);
     }
 
     /**

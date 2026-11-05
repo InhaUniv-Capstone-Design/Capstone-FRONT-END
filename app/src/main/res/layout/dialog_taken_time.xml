@@ -23,6 +23,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="10dp"
+        android:id="@+id/text_time_title"
         android:gravity="center"
         android:text="@string/med_time_title"
         android:textColor="@color/yakyeon_text"
