@@ -190,8 +190,15 @@ public final class HomeApi {
     }
 
     public static Long medicationTermsVersion(Context context) throws ApiException {
-        JSONArray terms = ApiClient.callArray(context, "GET", "/terms", null, false);
-        return HomeContracts.medicationTermsVersion(terms);
+        return HomeContracts.medicationTermsVersion(termsCatalog(context));
+    }
+
+    public static Long deviceTermsVersion(Context context) throws ApiException {
+        return HomeContracts.deviceTermsVersion(termsCatalog(context));
+    }
+
+    private static JSONArray termsCatalog(Context context) throws ApiException {
+        return ApiClient.callArray(context, "GET", "/terms", null, false);
     }
 
     public static JSONObject assignCompartment(Context context, long prescriptionId, int compartmentNo)

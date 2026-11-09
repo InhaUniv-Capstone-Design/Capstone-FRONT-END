@@ -3,9 +3,12 @@ package com.example.yakyeon2.api;
 import android.content.Context;
 
 import com.example.yakyeon2.data.AuthTokenStore;
+import com.example.yakyeon2.fcm.FcmRegistrar;
 
 import org.json.JSONException;
 import org.json.JSONObject;
+
+import java.util.List;
 
 public final class AuthApi {
 
@@ -129,12 +132,13 @@ public final class AuthApi {
         ));
     }
 
-    public static void registerPushToken(Context context, String fcmToken) throws ApiException {
+    public static void registerPushToken(Context context, String fcmToken, boolean notificationPermitted)
+            throws ApiException {
         ApiClient.call(
                 context,
                 "PUT",
                 "/users/me/push-token",
-                AuthContracts.pushTokenBody(fcmToken),
+                AuthContracts.pushRegistrationBody(fcmToken, notificationPermitted),
                 true
         );
         AuthTokenStore.saveFcmToken(context, fcmToken);
@@ -147,6 +151,51 @@ public final class AuthApi {
                 "/users/me/push-token",
                 AuthContracts.pushTokenBody(fcmToken),
                 true
+        );
+    }
+
+    public static List<AuthContracts.FoundAccount> findLoginId(
+            Context context,
+            String name,
+            String phone,
+            long verificationId,
+            String verificationToken
+    ) throws ApiException {
+        return AuthContracts.readFoundAccounts(ApiClient.call(
+                context,
+                "POST",
+                "/auth/find-id",
+                AuthContracts.findIdBody(name, phone, verificationId, verificationToken),
+                false
+        ));
+    }
+
+    /**
+     * Empty 204 is success. The caller drops the verification and any saved session.
+     * Passwords and verification tokens are not logged.
+     */
+    public static void resetPassword(
+            Context context,
+            String loginId,
+            String phone,
+            long verificationId,
+            String verificationToken,
+            String newPassword,
+            String newPasswordConfirm
+    ) throws ApiException {
+        ApiClient.call(
+                context,
+                "POST",
+                "/auth/password-reset",
+                AuthContracts.passwordResetBody(
+                        loginId,
+                        phone,
+                        verificationId,
+                        verificationToken,
+                        newPassword,
+                        newPasswordConfirm
+                ),
+                false
         );
     }
 
@@ -175,6 +224,9 @@ public final class AuthApi {
      */
     public static void deleteAccount(Context context, String password) throws ApiException {
         String pushToken = AuthTokenStore.fcmToken(context);
+        if (pushToken.isEmpty()) {
+            pushToken = FcmRegistrar.deviceToken(context);
+        }
         if (!pushToken.isEmpty()) {
             try {
                 deletePushToken(context, pushToken);
@@ -183,6 +235,7 @@ public final class AuthApi {
                     throw exception;
                 }
             }
+            FcmRegistrar.noteSessionEnded(context);
         }
         JSONObject body = new JSONObject();
         try {

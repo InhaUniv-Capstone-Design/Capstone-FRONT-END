@@ -82,6 +82,14 @@ public final class AppNavigator {
         return true;
     }
 
+    public void openOrPopTo(String title) {
+        if (popTo(title)) {
+            return;
+        }
+        nonMainTitles.clear();
+        openNonMain(title);
+    }
+
     public List<String> nonMainStack() {
         return new ArrayList<>(nonMainTitles);
     }

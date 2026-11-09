@@ -54,6 +54,32 @@ public class AppNavigatorTest {
     }
 
     @Test
+    public void openOrPopToOpensTheScreenWhenItIsNotOnTheStack() {
+        AppNavigator navigator = new AppNavigator();
+        navigator.openNonMain("med-consent");
+        navigator.openNonMain("med-envelope");
+        navigator.openNonMain("med-alarm");
+
+        navigator.openOrPopTo("med-list");
+
+        assertEquals("med-list", navigator.currentScreen());
+        assertEquals(1, navigator.nonMainStack().size());
+    }
+
+    @Test
+    public void openOrPopToKeepsScreensUnderTheRequestedOne() {
+        AppNavigator navigator = new AppNavigator();
+        navigator.openNonMain("med-list");
+        navigator.openNonMain("med-consent");
+        navigator.openNonMain("med-alarm");
+
+        navigator.openOrPopTo("med-list");
+
+        assertEquals("med-list", navigator.currentScreen());
+        assertEquals(1, navigator.nonMainStack().size());
+    }
+
+    @Test
     public void selectingTabClearsNonMainStack() {
         AppNavigator navigator = new AppNavigator();
         navigator.openNonMain("동의");

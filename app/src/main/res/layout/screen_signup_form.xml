@@ -105,6 +105,18 @@
                     android:layout_height="wrap_content"
                     android:layout_weight="1" />
 
+                <TextView
+                    android:id="@+id/text_code_timer"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp"
+                    android:gravity="center"
+                    android:minWidth="40dp"
+                    android:textColor="@color/yakyeon_deep"
+                    android:textSize="13sp"
+                    android:textStyle="bold"
+                    android:visibility="gone" />
+
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/button_request_code"
                     style="@style/Widget.Yakyeon.Button.Compact"
@@ -124,12 +136,33 @@
                     style="@style/Widget.Yakyeon.FieldLabel"
                     android:text="@string/auth_code_label" />
 
-                <com.example.yakyeon2.ui.YakyeonTextField
-                    android:id="@+id/field_verification_code"
-                    style="@style/Widget.Yakyeon.TextInput"
+                <FrameLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="5dp" />
+                    android:layout_marginTop="5dp">
+
+                    <com.example.yakyeon2.ui.YakyeonTextField
+                        android:id="@+id/field_verification_code"
+                        style="@style/Widget.Yakyeon.TextInput"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content" />
+
+                    <TextView
+                        android:id="@+id/text_code_verified"
+                        android:layout_width="match_parent"
+                        android:layout_height="52dp"
+                        android:background="@drawable/bg_code_verified"
+                        android:clickable="true"
+                        android:focusable="true"
+                        android:gravity="center_vertical"
+                        android:minHeight="52dp"
+                        android:paddingStart="16dp"
+                        android:paddingEnd="16dp"
+                        android:text="@string/auth_phone_verified"
+                        android:textColor="@color/yakyeon_deep"
+                        android:textSize="14sp"
+                        android:visibility="gone" />
+                </FrameLayout>
             </LinearLayout>
 
             <LinearLayout
@@ -162,6 +195,7 @@
                     android:textStyle="bold" />
 
                 <TextView
+                    android:id="@+id/text_sms_digits"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="8dp"

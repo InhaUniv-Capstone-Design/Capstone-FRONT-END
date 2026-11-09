@@ -84,7 +84,8 @@ public class YakyeonHeader extends LinearLayout {
         }
         actionIcon.setVisibility(VISIBLE);
         actionIcon.setImageResource(drawableRes);
-        actionIcon.setContentDescription(getContext().getString(R.string.med_history_action));
+        actionIcon.setContentDescription(getContext().getString(R.string.med_schedule_title));
+        actionIcon.setImageTintList(ColorStateList.valueOf(getContext().getColor(R.color.yakyeon_brand)));
         actionIcon.setOnClickListener(listener);
     }
 

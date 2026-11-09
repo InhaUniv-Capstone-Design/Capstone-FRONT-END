@@ -96,6 +96,77 @@ public class AuthFlowTest {
     }
 
     @Test
+    public void recoveryOpensFromLoginOnTheChosenTabAndBackReturns() {
+        AuthFlow flow = new AuthFlow(new AppNavigator(), new SignupDraft());
+        flow.start();
+
+        assertTrue(flow.openRecovery(AuthFlow.RecoveryTab.PASSWORD));
+        assertEquals(AuthScreen.ACCOUNT_RECOVERY, flow.screen());
+        assertEquals(AuthFlow.RecoveryTab.PASSWORD, flow.recoveryTab());
+
+        flow.showRecoveryTab(AuthFlow.RecoveryTab.ID);
+        assertEquals(AuthFlow.RecoveryTab.ID, flow.recoveryTab());
+        assertTrue(flow.back());
+        assertEquals(AuthScreen.LOGIN, flow.screen());
+        assertFalse(flow.back());
+    }
+
+    @Test
+    public void findIdVerificationThenResultDoesNotLeaveTheCodeScreenOnTheStack() {
+        AuthFlow flow = new AuthFlow(new AppNavigator(), new SignupDraft());
+        flow.start();
+        assertTrue(flow.openRecovery(AuthFlow.RecoveryTab.ID));
+        assertTrue(flow.openRecoveryVerify());
+        assertTrue(flow.openRecoveryResult());
+        assertEquals(AuthScreen.ACCOUNT_RECOVERY_RESULT, flow.screen());
+        assertTrue(flow.back());
+        assertEquals(AuthScreen.ACCOUNT_RECOVERY, flow.screen());
+    }
+
+    @Test
+    public void passwordResetKeepsTheVerifiedStepUntilTheNewPasswordScreen() {
+        AuthFlow flow = new AuthFlow(new AppNavigator(), new SignupDraft());
+        flow.start();
+        assertTrue(flow.openRecovery(AuthFlow.RecoveryTab.PASSWORD));
+        assertTrue(flow.openRecoveryVerify());
+        assertTrue(flow.openRecoveryPassword());
+        assertEquals(AuthScreen.ACCOUNT_RECOVERY_PASSWORD, flow.screen());
+        assertTrue(flow.openRecoveryDone());
+        assertEquals(AuthScreen.ACCOUNT_RECOVERY_DONE, flow.screen());
+        assertTrue(flow.back());
+        assertEquals(AuthScreen.ACCOUNT_RECOVERY, flow.screen());
+    }
+
+    @Test
+    public void failedVerificationReturnsToAFreshCodeStepAndResultCanOpenReset() {
+        AuthFlow flow = new AuthFlow(new AppNavigator(), new SignupDraft());
+        flow.start();
+        flow.openRecovery(AuthFlow.RecoveryTab.ID);
+        flow.openRecoveryVerify();
+        flow.openRecoveryPassword();
+        assertTrue(flow.reopenRecoveryVerify());
+        assertEquals(AuthScreen.ACCOUNT_RECOVERY_VERIFY, flow.screen());
+        assertTrue(flow.back());
+        assertEquals(AuthScreen.ACCOUNT_RECOVERY, flow.screen());
+
+        flow.openRecoveryVerify();
+        flow.openRecoveryResult();
+        assertTrue(flow.restartRecovery(AuthFlow.RecoveryTab.PASSWORD));
+        assertEquals(AuthScreen.ACCOUNT_RECOVERY, flow.screen());
+        assertEquals(AuthFlow.RecoveryTab.PASSWORD, flow.recoveryTab());
+        assertTrue(flow.back());
+        assertEquals(AuthScreen.LOGIN, flow.screen());
+    }
+
+    @Test
+    public void recoveryDoesNotOpenDuringSignup() {
+        AuthFlow flow = startedTypeFlow();
+
+        assertFalse(flow.openRecovery(AuthFlow.RecoveryTab.ID));
+        assertEquals(AuthScreen.SIGNUP_TYPE, flow.screen());
+    }
+
+    @Test
     public void leavingAuthStillReachesTheMainTabs() {
         AppNavigator navigator = new AppNavigator();
         new AuthFlow(navigator, new SignupDraft()).start();

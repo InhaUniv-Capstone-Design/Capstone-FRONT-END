@@ -16,12 +16,12 @@ import com.example.yakyeon2.R;
 import com.example.yakyeon2.api.CareContracts;
 import com.example.yakyeon2.api.HomeContracts;
 import com.example.yakyeon2.data.AccountType;
-import com.example.yakyeon2.data.ClockTime;
 import com.example.yakyeon2.data.DevFixtures;
 import com.example.yakyeon2.data.ScenarioPrescriptions;
 import com.example.yakyeon2.data.DoseRecord;
 import com.example.yakyeon2.data.DoseRound;
 import com.example.yakyeon2.data.DoseStatus;
+import com.example.yakyeon2.data.HomeDoseFocus;
 import com.example.yakyeon2.data.DrugRelations;
 import com.example.yakyeon2.data.GraphDocument;
 import com.example.yakyeon2.data.MedicationRules;
@@ -40,9 +40,9 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
-import java.util.Collections;
-import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 public final class MainScreens {
 
@@ -62,7 +62,13 @@ public final class MainScreens {
 
         void openDetail(String key);
 
+        void registerMedication();
+
         void refresh();
+
+        void checkHomeDoses();
+
+        void markUncheckedDose(long scheduledDoseId);
 
         void back();
 
@@ -94,10 +100,11 @@ public final class MainScreens {
             MedicationStore store,
             Host host,
             boolean debuggable,
-            String userName
+            String userName,
+            String linkedPatientName
     ) {
         View root = LayoutInflater.from(activity).inflate(R.layout.screen_home, null);
-        paintGreeting(activity, root, userName);
+        paintGreeting(activity, root, userName, linkedPatientName);
         int count = session.medicationIds().size();
         TextView taking = root.findViewById(R.id.text_taking_count);
         taking.setText(activity.getString(R.string.home_taking_count, count));
@@ -132,30 +139,17 @@ public final class MainScreens {
         View.OnClickListener openList = v -> host.openDetail(MedScreen.LIST);
         root.findViewById(R.id.text_taking_count).setOnClickListener(openList);
         root.findViewById(R.id.button_add_med).setOnClickListener(openList);
-        root.findViewById(R.id.button_home_history).setOnClickListener(v -> host.openDetail(MedScreen.HISTORY));
-        com.google.android.material.card.MaterialCardView remainingCard =
-                root.findViewById(R.id.card_remaining);
-        remainingCard.setCardBackgroundColor(activity.getColor(R.color.white));
-        remainingCard.setCardElevation(0f);
-        remainingCard.setOnClickListener(v -> host.openDetail(MedScreen.SCHEDULE));
-        root.findViewById(R.id.button_week).setOnClickListener(v -> host.openDetail(MedScreen.SCHEDULE));
-        LinearLayout remaining = root.findViewById(R.id.remaining_rows);
-        TextView remainingEmpty = root.findViewById(R.id.text_remaining_empty);
-        List<DoseRecord> left = new ArrayList<>(MedicationRules.remainingToday(store.records(), now, zone));
-        Collections.sort(left, Comparator.comparingLong(DoseRecord::getScheduledAtMillis));
-        left = new ArrayList<>(MedicationRules.onePerEnvelopeRound(left));
-        remainingEmpty.setVisibility(left.isEmpty() ? View.VISIBLE : View.GONE);
-        for (int index = 0; index < left.size(); index++) {
-            if (index > 0) {
-                View divider = new View(activity);
-                divider.setBackgroundColor(activity.getColor(R.color.yakyeon_divider));
-                remaining.addView(divider, new LinearLayout.LayoutParams(
-                        LinearLayout.LayoutParams.MATCH_PARENT,
-                        Math.max(1, Math.round(activity.getResources().getDisplayMetrics().density))
-                ));
-            }
-            remaining.addView(remainingRow(activity, left.get(index), zone, host));
-        }
+        root.findViewById(R.id.button_register_home).setOnClickListener(v -> host.registerMedication());
+        root.findViewById(R.id.button_home_history).setOnClickListener(v -> host.openDetail(MedScreen.SCHEDULE));
+        paintTodayDoses(
+                activity,
+                root,
+                localEntries(store.records(), now),
+                localCanCheck(store, now, zone),
+                now,
+                zone,
+                host
+        );
         if (debuggable) {
             root.findViewById(R.id.text_home_greeting).setOnLongClickListener(v -> {
                 host.openDetail(DEV_TOOLS);
@@ -176,10 +170,11 @@ public final class MainScreens {
             Host host,
             boolean debuggable,
             String userName,
-            boolean awaitingPatientLink
+            boolean awaitingPatientLink,
+            String linkedPatientName
     ) {
         View root = LayoutInflater.from(activity).inflate(R.layout.screen_home, null);
-        paintGreeting(activity, root, userName);
+        paintGreeting(activity, root, userName, linkedPatientName);
         TextView taking = root.findViewById(R.id.text_taking_count);
         TextView progress = root.findViewById(R.id.text_progress);
         TextView interaction = root.findViewById(R.id.text_interaction);
@@ -190,10 +185,8 @@ public final class MainScreens {
         View.OnClickListener openList = v -> host.openDetail(MedScreen.LIST);
         taking.setOnClickListener(openList);
         root.findViewById(R.id.button_add_med).setOnClickListener(openList);
-        root.findViewById(R.id.button_home_history).setOnClickListener(v -> host.openDetail(MedScreen.HISTORY));
-        View.OnClickListener openSchedule = v -> host.openDetail(MedScreen.SCHEDULE);
-        root.findViewById(R.id.card_remaining).setOnClickListener(openSchedule);
-        root.findViewById(R.id.button_week).setOnClickListener(openSchedule);
+        root.findViewById(R.id.button_register_home).setOnClickListener(v -> host.registerMedication());
+        root.findViewById(R.id.button_home_history).setOnClickListener(v -> host.openDetail(MedScreen.SCHEDULE));
         if (debuggable) {
             root.findViewById(R.id.text_home_greeting).setOnLongClickListener(v -> {
                 host.openDetail(DEV_TOOLS);
@@ -234,10 +227,15 @@ public final class MainScreens {
             paintServerSlot(root, R.id.slot_bedtime, R.id.icon_bedtime, R.drawable.ic_yakyeon_moon, null);
         } else {
             HomeContracts.HomeSummary value = summary.value;
-            progress.setText(activity.getString(R.string.home_progress, value.done, value.total));
-            track.setWeightSum(value.total <= 0L ? 1f : value.total);
+            HomeContracts.SlotProgress slotProgress = HomeContracts.slotProgress(value.slots);
+            progress.setText(activity.getString(
+                    R.string.home_progress,
+                    slotProgress.done,
+                    slotProgress.scheduled
+            ));
+            track.setWeightSum(slotProgress.scheduled <= 0 ? 1f : slotProgress.scheduled);
             LinearLayout.LayoutParams fillParams = (LinearLayout.LayoutParams) fill.getLayoutParams();
-            fillParams.weight = value.total <= 0L ? 0f : Math.min(value.done, value.total);
+            fillParams.weight = slotProgress.scheduled <= 0 ? 0f : slotProgress.done;
             fill.setLayoutParams(fillParams);
             paintServerSlot(root, R.id.slot_morning, R.id.icon_morning, R.drawable.ic_yakyeon_sun,
                     HomeContracts.slotState(value.slots, HomeContracts.SLOT_MORNING));
@@ -269,7 +267,6 @@ public final class MainScreens {
             }
             interaction.setText(text);
         }
-        LinearLayout remaining = root.findViewById(R.id.remaining_rows);
         if (todayDoses == null || todayDoses.kind != HomeContracts.Section.Kind.READY || todayDoses.value == null) {
             remainingEmpty.setVisibility(View.VISIBLE);
             remainingEmpty.setText(todayDoses == null || todayDoses.message == null
@@ -277,94 +274,293 @@ public final class MainScreens {
                     : todayDoses.message);
             return root;
         }
-        java.util.List<HomeContracts.Dose> pending = HomeContracts.pendingSorted(todayDoses.value);
-        if (pending.isEmpty() && summary != null && summary.kind == HomeContracts.Section.Kind.READY
-                && summary.value != null && summary.value.nextDose != null) {
-            remainingEmpty.setVisibility(View.GONE);
-            remaining.addView(serverRemaining(activity, summary.value.nextDose, host));
-            return root;
-        }
-        remainingEmpty.setVisibility(pending.isEmpty() ? View.VISIBLE : View.GONE);
-        float density = activity.getResources().getDisplayMetrics().density;
-        for (int index = 0; index < pending.size(); index++) {
-            if (index > 0) {
-                View divider = new View(activity);
-                divider.setBackgroundColor(activity.getColor(R.color.yakyeon_divider));
-                remaining.addView(divider, new LinearLayout.LayoutParams(
-                        LinearLayout.LayoutParams.MATCH_PARENT,
-                        Math.max(1, Math.round(density))
-                ));
-            }
-            remaining.addView(serverRemaining(activity, pending.get(index), host));
-        }
+        ZoneId seoul = ZoneId.of("Asia/Seoul");
+        long doseNow = System.currentTimeMillis();
+        paintTodayDoses(
+                activity,
+                root,
+                serverEntries(todayDoses.value),
+                serverCanCheck(todayDoses.value, doseNow, seoul),
+                doseNow,
+                seoul,
+                host
+        );
         return root;
+    }
+
+    private static void paintTodayDoses(
+            AppCompatActivity activity,
+            View root,
+            List<HomeDoseFocus.Entry> doses,
+            boolean canCheck,
+            long now,
+            ZoneId zone,
+            Host host
+    ) {
+        View overduePanel = root.findViewById(R.id.panel_overdue);
+        View divider = root.findViewById(R.id.divider_home_doses);
+        View upcomingPanel = root.findViewById(R.id.panel_upcoming);
+        View donePanel = root.findViewById(R.id.panel_done);
+        TextView empty = root.findViewById(R.id.text_remaining_empty);
+        LinearLayout upcomingRows = root.findViewById(R.id.upcoming_rows);
+        LinearLayout overdueRows = root.findViewById(R.id.overdue_rows);
+        View check = root.findViewById(R.id.button_home_dose_check);
+        upcomingRows.removeAllViews();
+        overdueRows.removeAllViews();
+        overdueRows.setVisibility(View.GONE);
+        check.setOnClickListener(v -> host.checkHomeDoses());
+        HomeDoseFocus.Board board = HomeDoseFocus.focus(doses, now, zone);
+        if (board.outcome == HomeDoseFocus.Outcome.DONE) {
+            overduePanel.setVisibility(View.GONE);
+            divider.setVisibility(View.GONE);
+            upcomingPanel.setVisibility(View.GONE);
+            donePanel.setVisibility(View.VISIBLE);
+            empty.setVisibility(View.GONE);
+            return;
+        }
+        if (board.outcome == HomeDoseFocus.Outcome.EMPTY) {
+            overduePanel.setVisibility(View.GONE);
+            divider.setVisibility(View.GONE);
+            upcomingPanel.setVisibility(View.GONE);
+            donePanel.setVisibility(View.GONE);
+            empty.setVisibility(View.VISIBLE);
+            empty.setText(R.string.home_remaining_empty);
+            return;
+        }
+        boolean ask = canCheck;
+        boolean hasUpcoming = !board.upcoming.isEmpty();
+        overduePanel.setVisibility(ask ? View.VISIBLE : View.GONE);
+        divider.setVisibility(ask ? View.VISIBLE : View.GONE);
+        upcomingPanel.setVisibility(View.VISIBLE);
+        donePanel.setVisibility(View.GONE);
+        empty.setVisibility(hasUpcoming ? View.GONE : View.VISIBLE);
+        if (!hasUpcoming) {
+            empty.setText(R.string.home_upcoming_none);
+            return;
+        }
+        float density = activity.getResources().getDisplayMetrics().density;
+        int gap = Math.max(1, Math.round(12f * density));
+        for (int index = 0; index < board.upcoming.size(); index++) {
+            View row = todayRow(activity, board.upcoming.get(index), now, zone);
+            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+            );
+            if (index > 0) {
+                params.topMargin = gap;
+            }
+            upcomingRows.addView(row, params);
+        }
+    }
+
+    private static boolean localCanCheck(MedicationStore store, long now, ZoneId zone) {
+        LocalDate today = Instant.ofEpochMilli(now).atZone(zone).toLocalDate();
+        for (DoseRecord record : MedicationRules.onDate(store.records(), today, zone)) {
+            if (MedicationRules.canRevise(record, now)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean serverCanCheck(List<HomeContracts.Dose> doses, long now, ZoneId zone) {
+        if (doses == null) {
+            return false;
+        }
+        LocalDate today = Instant.ofEpochMilli(now).atZone(zone).toLocalDate();
+        Instant instant = Instant.ofEpochMilli(now);
+        for (HomeContracts.Dose dose : doses) {
+            if (dose == null || !today.equals(HomeContracts.seoulDate(dose.scheduledAt))) {
+                continue;
+            }
+            if (HomeContracts.followUp(dose, instant) == HomeContracts.DoseFollowUp.ASK) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static List<HomeDoseFocus.Entry> localEntries(List<DoseRecord> records, long now) {
+        Map<String, List<DoseRecord>> groups = new LinkedHashMap<>();
+        if (records != null) {
+            for (DoseRecord record : records) {
+                String key = record.getEnvelopeId()
+                        + "\u001f"
+                        + record.getRound().name()
+                        + "\u001f"
+                        + record.getScheduledAtMillis();
+                List<DoseRecord> group = groups.get(key);
+                if (group == null) {
+                    group = new ArrayList<>();
+                    groups.put(key, group);
+                }
+                group.add(record);
+            }
+        }
+        List<HomeDoseFocus.Entry> entries = new ArrayList<>();
+        for (List<DoseRecord> group : groups.values()) {
+            DoseRecord first = group.get(0);
+            boolean taken = true;
+            StringBuilder names = new StringBuilder();
+            for (DoseRecord record : group) {
+                DoseStatus status = MedicationRules.displayStatus(record, now);
+                if (status != DoseStatus.COMPLETED && status != DoseStatus.DELAYED) {
+                    taken = false;
+                }
+                String name = record.getMedicineName();
+                if (name != null && !name.trim().isEmpty()) {
+                    if (names.length() > 0) {
+                        names.append(", ");
+                    }
+                    names.append(name.trim());
+                }
+            }
+            String place = first.getEnvelopeName() == null ? "" : first.getEnvelopeName().trim();
+            if (names.length() > 0) {
+                place = place.isEmpty() ? names.toString() : place + " · " + names;
+            }
+            entries.add(new HomeDoseFocus.Entry(
+                    place,
+                    first.getRound().name(),
+                    first.getScheduledAtMillis(),
+                    taken
+            ));
+        }
+        return entries;
+    }
+
+    private static List<HomeDoseFocus.Entry> serverEntries(List<HomeContracts.Dose> doses) {
+        List<HomeDoseFocus.Entry> entries = new ArrayList<>();
+        if (doses == null) {
+            return entries;
+        }
+        for (HomeContracts.Dose dose : doses) {
+            Long at = HomeContracts.epochMillis(dose.scheduledAt);
+            if (at == null) {
+                continue;
+            }
+            boolean taken = HomeContracts.STATUS_NORMAL.equals(dose.status)
+                    || HomeContracts.STATUS_DELAYED.equals(dose.status)
+                    || (dose.takenAt != null && !dose.takenAt.isEmpty());
+            StringBuilder drugs = new StringBuilder();
+            if (dose.medications != null) {
+                for (HomeContracts.DoseDrug drug : dose.medications) {
+                    if (drug == null || drug.drugName == null || drug.drugName.trim().isEmpty()) {
+                        continue;
+                    }
+                    if (drugs.length() > 0) {
+                        drugs.append(", ");
+                    }
+                    drugs.append(drug.drugName.trim());
+                }
+            }
+            String place = dose.hospitalName == null ? "" : dose.hospitalName.trim();
+            if (drugs.length() > 0) {
+                place = place.isEmpty() ? drugs.toString() : place + " · " + drugs;
+            }
+            entries.add(new HomeDoseFocus.Entry(place, dose.timingSlot, at, taken));
+        }
+        return entries;
+    }
+
+    private static View todayRow(
+            AppCompatActivity activity,
+            HomeDoseFocus.Entry entry,
+            long now,
+            ZoneId zone
+    ) {
+        View row = LayoutInflater.from(activity).inflate(R.layout.item_home_upcoming, null);
+        ((TextView) row.findViewById(R.id.text_place)).setText(placeName(activity, entry.place));
+        ((TextView) row.findViewById(R.id.text_when)).setText(whenLabel(activity, entry, zone));
+        TextView badge = row.findViewById(R.id.text_remain);
+        if (entry.taken) {
+            row.setBackgroundResource(R.drawable.bg_home_upcoming);
+            badge.setText(R.string.med_dose_taken);
+            badge.setTextColor(activity.getColor(R.color.yakyeon_history_done_text));
+        } else if (entry.scheduledAtMillis > now) {
+            row.setBackgroundResource(R.drawable.bg_home_upcoming);
+            badge.setText(remainLabel(activity, entry.scheduledAtMillis, now));
+            badge.setTextColor(activity.getColor(R.color.yakyeon_brand));
+        } else {
+            boolean missed = now > entry.scheduledAtMillis + MedicationRules.THREE_HOURS_MS;
+            if (missed) {
+                row.setBackgroundResource(R.drawable.bg_home_missed);
+                badge.setBackgroundResource(R.drawable.bg_home_missed_badge);
+                badge.setText(R.string.med_status_missed);
+                badge.setTextColor(activity.getColor(R.color.yakyeon_missed_text));
+            } else {
+                row.setBackgroundResource(R.drawable.bg_home_overdue);
+                badge.setBackgroundResource(R.drawable.bg_home_remain_badge);
+                badge.setText(R.string.med_dose_ask);
+                badge.setTextColor(activity.getColor(R.color.yakyeon_delayed_text));
+            }
+        }
+        return row;
+    }
+
+    private static String placeName(AppCompatActivity activity, String place) {
+        if (place == null || place.trim().isEmpty()) {
+            return activity.getString(R.string.med_slot_empty_name);
+        }
+        return place.trim();
+    }
+
+    private static String whenLabel(AppCompatActivity activity, HomeDoseFocus.Entry entry, ZoneId zone) {
+        ZonedDateTime time = Instant.ofEpochMilli(entry.scheduledAtMillis).atZone(zone);
+        String clock = String.format("%02d:%02d", time.getHour(), time.getMinute());
+        return activity.getString(R.string.home_slot_clock, focusSlotLabel(activity, entry.slot), clock);
+    }
+
+    private static String remainLabel(AppCompatActivity activity, long scheduledAtMillis, long now) {
+        long minutes = Math.max(0L, (scheduledAtMillis - now) / 60000L);
+        if (minutes <= 0L) {
+            return activity.getString(R.string.home_remain_soon);
+        }
+        long hours = minutes / 60L;
+        long rest = minutes % 60L;
+        String amount;
+        if (hours > 0L && rest > 0L) {
+            amount = activity.getString(R.string.home_remain_hours, hours, rest);
+        } else if (hours > 0L) {
+            amount = activity.getString(R.string.home_remain_hours_only, hours);
+        } else {
+            amount = activity.getString(R.string.home_remain_minutes, rest);
+        }
+        return activity.getString(R.string.home_remain_left, amount);
+    }
+
+    private static String focusSlotLabel(AppCompatActivity activity, String slot) {
+        if ("MORNING".equals(slot)) {
+            return activity.getString(R.string.round_morning);
+        }
+        if ("LUNCH".equals(slot)) {
+            return activity.getString(R.string.round_lunch);
+        }
+        if ("EVENING".equals(slot) || HomeContracts.SLOT_DINNER.equals(slot)) {
+            return activity.getString(R.string.round_evening);
+        }
+        if ("BEDTIME".equals(slot)) {
+            return activity.getString(R.string.round_bedtime);
+        }
+        return slot == null ? "" : slot;
     }
 
     private static void paintServerSlot(View root, int slotId, int iconId, int idleIcon, String state) {
         View slot = root.findViewById(slotId);
         ImageView icon = root.findViewById(iconId);
         boolean done = HomeContracts.STATE_DONE.equals(state);
+        boolean missed = HomeContracts.STATE_MISSED.equals(state);
+        boolean hidden = state == null || HomeContracts.STATE_NONE.equals(state);
+        slot.setVisibility(hidden ? View.INVISIBLE : View.VISIBLE);
         slot.setBackgroundResource(done ? R.drawable.yakyeon_slot_done : R.drawable.yakyeon_slot_idle);
-        icon.setImageResource(done ? R.drawable.ic_yakyeon_check : idleIcon);
+        icon.setImageResource(done
+                ? R.drawable.ic_yakyeon_check
+                : (missed ? R.drawable.ic_settings_alert : idleIcon));
         icon.clearColorFilter();
         slot.setAlpha(1f);
-        if (HomeContracts.STATE_MISSED.equals(state)) {
+        if (missed) {
             icon.setColorFilter(root.getResources().getColor(R.color.yakyeon_missed_text, null));
-        } else if (state == null || HomeContracts.STATE_NONE.equals(state)) {
-            slot.setAlpha(0.45f);
         }
-    }
-
-    private static View serverRemaining(AppCompatActivity activity, HomeContracts.Dose dose, Host host) {
-        View row = LayoutInflater.from(activity).inflate(R.layout.item_home_remaining, null);
-        TextView title = row.findViewById(R.id.text_remaining_time);
-        title.setText(slotLabel(activity, dose.timingSlot) + " " + HomeContracts.clock(dose.scheduledAt));
-        String place = dose.hospitalName == null || dose.hospitalName.trim().isEmpty()
-                ? activity.getString(R.string.med_slot_empty_name)
-                : dose.hospitalName.trim();
-        ((TextView) row.findViewById(R.id.text_remaining_place)).setText(place + " · " + doseNames(dose.medications));
-        boolean night = HomeContracts.SLOT_DINNER.equals(dose.timingSlot) || HomeContracts.SLOT_BEDTIME.equals(dose.timingSlot);
-        ((ImageView) row.findViewById(R.id.icon_round)).setImageResource(
-                night ? R.drawable.ic_yakyeon_moon : R.drawable.ic_yakyeon_sun
-        );
-        row.setOnClickListener(v -> host.openDetail(MedScreen.SCHEDULE));
-        return row;
-    }
-
-    private static View serverRemaining(AppCompatActivity activity, HomeContracts.NextDose dose, Host host) {
-        View row = LayoutInflater.from(activity).inflate(R.layout.item_home_remaining, null);
-        TextView title = row.findViewById(R.id.text_remaining_time);
-        title.setText(slotLabel(activity, dose.timingSlot) + " " + HomeContracts.clock(dose.scheduledAt));
-        String place = dose.hospitalName == null || dose.hospitalName.trim().isEmpty()
-                ? activity.getString(R.string.med_slot_empty_name)
-                : dose.hospitalName.trim();
-        StringBuilder names = new StringBuilder();
-        for (HomeContracts.NamedDrug drug : dose.medications) {
-            if (names.length() > 0) {
-                names.append(", ");
-            }
-            names.append(drug.drugName);
-        }
-        ((TextView) row.findViewById(R.id.text_remaining_place)).setText(place + " · " + names);
-        boolean night = HomeContracts.SLOT_DINNER.equals(dose.timingSlot) || HomeContracts.SLOT_BEDTIME.equals(dose.timingSlot);
-        ((ImageView) row.findViewById(R.id.icon_round)).setImageResource(
-                night ? R.drawable.ic_yakyeon_moon : R.drawable.ic_yakyeon_sun
-        );
-        row.setOnClickListener(v -> host.openDetail(MedScreen.SCHEDULE));
-        return row;
-    }
-
-    private static String doseNames(java.util.List<HomeContracts.DoseDrug> medications) {
-        StringBuilder names = new StringBuilder();
-        if (medications != null) {
-            for (HomeContracts.DoseDrug drug : medications) {
-                if (names.length() > 0) {
-                    names.append(", ");
-                }
-                names.append(drug.drugName);
-            }
-        }
-        return names.toString();
     }
 
     public static String slotLabel(AppCompatActivity activity, String slot) {
@@ -528,25 +724,6 @@ public final class MainScreens {
             return;
         }
         host.refresh();
-    }
-
-    private static View remainingRow(AppCompatActivity activity, DoseRecord record, ZoneId zone, Host host) {
-        View row = LayoutInflater.from(activity).inflate(R.layout.item_home_remaining, null);
-        ZonedDateTime time = Instant.ofEpochMilli(record.getScheduledAtMillis()).atZone(zone);
-        int minutes = time.getHour() * 60 + time.getMinute();
-        TextView title = row.findViewById(R.id.text_remaining_time);
-        title.setText(MedScreens.roundLabel(activity, record.getRound()) + " " + ClockTime.formatHm(minutes));
-        String place = record.getEnvelopeName() == null ? "" : record.getEnvelopeName().trim();
-        if (place.isEmpty()) {
-            place = activity.getString(R.string.med_slot_empty_name);
-        }
-        ((TextView) row.findViewById(R.id.text_remaining_place)).setText(place);
-        boolean night = record.getRound() == DoseRound.EVENING || record.getRound() == DoseRound.BEDTIME;
-        ((ImageView) row.findViewById(R.id.icon_round)).setImageResource(
-                night ? R.drawable.ic_yakyeon_moon : R.drawable.ic_yakyeon_sun
-        );
-        row.setOnClickListener(v -> host.openDetail(MedScreen.SCHEDULE));
-        return row;
     }
 
     public static View graph(AppCompatActivity activity, MedicationStore store) {
@@ -1196,8 +1373,25 @@ public final class MainScreens {
         return key == null ? "" : key;
     }
 
-    private static void paintGreeting(AppCompatActivity activity, View root, String name) {
+    private static void paintGreeting(
+            AppCompatActivity activity,
+            View root,
+            String name,
+            String linkedPatientName
+    ) {
         TextView greeting = root.findViewById(R.id.text_home_greeting);
+        TextView subtitle = root.findViewById(R.id.text_home_subtitle);
+        String patient = linkedPatientName == null ? "" : linkedPatientName.trim();
+        if (!patient.isEmpty()) {
+            if (name == null || name.trim().isEmpty()) {
+                greeting.setText(R.string.home_greeting);
+            } else {
+                greeting.setText(activity.getString(R.string.home_greeting_guardian, name.trim()));
+            }
+            subtitle.setText(activity.getString(R.string.home_subtitle_patient, patient));
+            return;
+        }
+        subtitle.setText(R.string.home_subtitle);
         if (name == null || name.trim().isEmpty()) {
             greeting.setText(R.string.home_greeting);
             return;

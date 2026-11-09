@@ -135,6 +135,42 @@ public final class HomeContracts {
         }
     }
 
+    /**
+     * One row of {@code unchecked_doses} or {@code upcoming_doses}.
+     * The same timing slot stays as separate rows when the scheduled times differ.
+     */
+    public static final class SummaryDose {
+        public final long scheduledDoseId;
+        public final String hospitalName;
+        public final String timingSlot;
+        public final String scheduledAt;
+        public final List<NamedDrug> medications;
+
+        private SummaryDose(
+                long scheduledDoseId,
+                String hospitalName,
+                String timingSlot,
+                String scheduledAt,
+                List<NamedDrug> medications
+        ) {
+            this.scheduledDoseId = scheduledDoseId;
+            this.hospitalName = hospitalName;
+            this.timingSlot = timingSlot;
+            this.scheduledAt = scheduledAt;
+            this.medications = medications;
+        }
+    }
+
+    public static final class SlotProgress {
+        public final int done;
+        public final int scheduled;
+
+        private SlotProgress(int done, int scheduled) {
+            this.done = done;
+            this.scheduled = scheduled;
+        }
+    }
+
     public static final class HomeSummary {
         public final String date;
         public final long total;
@@ -145,6 +181,12 @@ public final class HomeContracts {
         public final long pending;
         public final List<SlotState> slots;
         public final NextDose nextDose;
+        public final String serverTime;
+        public final List<SummaryDose> uncheckedDoses;
+        public final List<SummaryDose> upcomingDoses;
+        public final Boolean allDone;
+        /** True when the response includes the newer schedule lists or {@code all_done}. */
+        public final boolean serverBoard;
 
         private HomeSummary(
                 String date,
@@ -155,7 +197,12 @@ public final class HomeContracts {
                 long missed,
                 long pending,
                 List<SlotState> slots,
-                NextDose nextDose
+                NextDose nextDose,
+                String serverTime,
+                List<SummaryDose> uncheckedDoses,
+                List<SummaryDose> upcomingDoses,
+                Boolean allDone,
+                boolean serverBoard
         ) {
             this.date = date;
             this.total = total;
@@ -166,6 +213,11 @@ public final class HomeContracts {
             this.pending = pending;
             this.slots = slots;
             this.nextDose = nextDose;
+            this.serverTime = serverTime;
+            this.uncheckedDoses = uncheckedDoses;
+            this.upcomingDoses = upcomingDoses;
+            this.allDone = allDone;
+            this.serverBoard = serverBoard;
         }
     }
 
@@ -559,6 +611,11 @@ public final class HomeContracts {
         return String.format("%02d:%02d", parsed.getHour(), parsed.getMinute());
     }
 
+    public static Long epochMillis(String iso) {
+        OffsetDateTime parsed = parseOffset(iso);
+        return parsed == null ? null : parsed.toInstant().toEpochMilli();
+    }
+
     public static LocalDate seoulDate(String iso) {
         OffsetDateTime parsed = parseOffset(iso);
         if (parsed == null) {
@@ -681,7 +738,20 @@ public final class HomeContracts {
     }
 
     public static Long medicationTermsVersion(JSONArray terms) throws ApiException {
-        if (terms == null) {
+        return singleTermsVersion(terms, SettingsContracts.MEDICATION);
+    }
+
+    public static Long deviceTermsVersion(JSONArray terms) throws ApiException {
+        return singleTermsVersion(terms, SettingsContracts.DEVICE);
+    }
+
+    /**
+     * The current version id for one terms type.
+     * Returns null when that type is absent or listed more than once.
+     * A malformed item is a response error, not a missing version.
+     */
+    private static Long singleTermsVersion(JSONArray terms, String termsType) throws ApiException {
+        if (terms == null || termsType == null) {
             throw ApiException.response(200);
         }
         Long found = null;
@@ -691,7 +761,7 @@ public final class HomeContracts {
                 throw ApiException.response(200);
             }
             String type = JsonReads.text(item, "terms_type");
-            if (!SettingsContracts.MEDICATION.equals(type)) {
+            if (!termsType.equals(type)) {
                 continue;
             }
             long id = JsonReads.positiveId(item, "terms_version_id");
@@ -742,6 +812,16 @@ public final class HomeContracts {
                     readNamedDrugs(requiredArray(node, "medications"))
             );
         }
+        boolean hasUnchecked = response.has("unchecked_doses");
+        boolean hasUpcoming = response.has("upcoming_doses");
+        boolean hasAllDone = response.has("all_done");
+        boolean hasServerTime = response.has("server_time");
+        List<SummaryDose> unchecked = hasUnchecked
+                ? readSummaryDoses(optionalDoseArray(response, "unchecked_doses"))
+                : Collections.emptyList();
+        List<SummaryDose> upcoming = hasUpcoming
+                ? readSummaryDoses(optionalDoseArray(response, "upcoming_doses"))
+                : Collections.emptyList();
         return new HomeSummary(
                 requireDate(response, "date"),
                 JsonReads.number(response, "total"),
@@ -751,8 +831,47 @@ public final class HomeContracts {
                 JsonReads.number(response, "missed"),
                 JsonReads.number(response, "pending"),
                 parsed,
-                next
+                next,
+                hasServerTime ? optionalOffset(response, "server_time") : null,
+                unchecked,
+                upcoming,
+                hasAllDone ? JsonReads.optionalBool(response, "all_done") : null,
+                hasUnchecked || hasUpcoming || hasAllDone
         );
+    }
+
+    /**
+     * Denominator is every slot whose state is not {@code NONE}.
+     * Numerator is every slot whose state is {@code DONE}.
+     */
+    public static SlotProgress slotProgress(List<SlotState> slots) {
+        int scheduled = 0;
+        int done = 0;
+        if (slots != null) {
+            for (SlotState slot : slots) {
+                if (slot == null || STATE_NONE.equals(slot.state)) {
+                    continue;
+                }
+                scheduled++;
+                if (STATE_DONE.equals(slot.state)) {
+                    done++;
+                }
+            }
+        }
+        return new SlotProgress(done, scheduled);
+    }
+
+    /**
+     * Whole minutes from {@code serverTime} to {@code scheduledAt}.
+     * Both values must carry an offset such as {@code +09:00}.
+     */
+    public static Long minutesUntil(String scheduledAt, String serverTime) {
+        OffsetDateTime scheduled = parseOffset(scheduledAt);
+        OffsetDateTime server = parseOffset(serverTime);
+        if (scheduled == null || server == null) {
+            return null;
+        }
+        return ChronoUnit.MINUTES.between(server, scheduled);
     }
 
     public static List<Dose> readDoses(JSONArray array) throws ApiException {
@@ -1002,6 +1121,49 @@ public final class HomeContracts {
             }
         }
         return null;
+    }
+
+    private static JSONArray optionalDoseArray(JSONObject json, String key) throws ApiException {
+        if (json == null || !json.has(key) || json.isNull(key)) {
+            return new JSONArray();
+        }
+        if (!(json.opt(key) instanceof JSONArray)) {
+            throw ApiException.response(200);
+        }
+        return json.optJSONArray(key);
+    }
+
+    private static List<SummaryDose> readSummaryDoses(JSONArray array) throws ApiException {
+        List<SummaryDose> rows = new ArrayList<>();
+        for (int index = 0; index < array.length(); index++) {
+            JSONObject item = array.optJSONObject(index);
+            if (item == null) {
+                throw ApiException.response(200);
+            }
+            String timing = JsonReads.text(item, "timing_slot");
+            if (!knownSummarySlot(timing)) {
+                throw ApiException.response(200);
+            }
+            List<NamedDrug> medications = item.has("medications") && !item.isNull("medications")
+                    ? readNamedDrugs(requiredArray(item, "medications"))
+                    : Collections.emptyList();
+            rows.add(new SummaryDose(
+                    JsonReads.positiveId(item, "scheduled_dose_id"),
+                    JsonReads.optionalText(item, "hospital_name"),
+                    timing,
+                    requireOffset(item, "scheduled_at"),
+                    medications
+            ));
+        }
+        Collections.sort(rows, (left, right) -> {
+            Long leftAt = epochMillis(left.scheduledAt);
+            Long rightAt = epochMillis(right.scheduledAt);
+            if (leftAt == null || rightAt == null) {
+                return left.scheduledAt.compareTo(right.scheduledAt);
+            }
+            return leftAt.compareTo(rightAt);
+        });
+        return rows;
     }
 
     private static List<NamedDrug> readNamedDrugs(JSONArray array) throws ApiException {

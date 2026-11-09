@@ -11,6 +11,8 @@ public final class ApiCodes {
     public static final String CURRENT_PASSWORD_MISMATCH = "CURRENT_PASSWORD_MISMATCH";
     public static final String PASSWORD_MISMATCH = "PASSWORD_MISMATCH";
     public static final String USER_NOT_FOUND = "USER_NOT_FOUND";
+    public static final String ACCOUNT_NOT_FOUND = "ACCOUNT_NOT_FOUND";
+    public static final String RATE_LIMITED = "RATE_LIMITED";
     public static final String INVALID_NOTIFICATION_SETTING = "INVALID_NOTIFICATION_SETTING";
     public static final String INVALID_PHONE_FORMAT = "INVALID_PHONE_FORMAT";
     public static final String VERIFICATION_RATE_LIMITED = "VERIFICATION_RATE_LIMITED";
@@ -33,6 +35,7 @@ public final class ApiCodes {
     public static final String INTERACTION_NOT_FOUND = "INTERACTION_NOT_FOUND";
     public static final String PRESCRIPTION_NOT_FOUND = "PRESCRIPTION_NOT_FOUND";
     public static final String COMPARTMENT_MAPPING_NOT_FOUND = "COMPARTMENT_MAPPING_NOT_FOUND";
+    public static final String DEVICE_CREDENTIALS_INVALID = "DEVICE_CREDENTIALS_INVALID";
     public static final String DEVICE_ALREADY_REGISTERED = "DEVICE_ALREADY_REGISTERED";
     public static final String DEVICE_SERIAL_IN_USE = "DEVICE_SERIAL_IN_USE";
     public static final String COMPARTMENT_OCCUPIED = "COMPARTMENT_OCCUPIED";

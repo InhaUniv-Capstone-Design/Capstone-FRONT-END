@@ -85,6 +85,73 @@ public class HomeContractTest {
     }
 
     @Test
+    public void homeSummaryReadsServerClockUncheckedUpcomingAndSlotProgress() throws Exception {
+        HomeContracts.HomeSummary summary = HomeContracts.readHomeSummary(new JSONObject(
+                "{"
+                        + "\"date\":\"2026-11-09\","
+                        + "\"server_time\":\"2026-11-09T08:48:00+09:00\","
+                        + "\"total\":4,\"done\":1,\"normal\":1,\"delayed\":0,\"missed\":1,\"pending\":2,"
+                        + "\"all_done\":false,"
+                        + "\"slots\":["
+                        + "{\"timing_slot\":\"MORNING\",\"state\":\"DONE\"},"
+                        + "{\"timing_slot\":\"LUNCH\",\"state\":\"PENDING\"},"
+                        + "{\"timing_slot\":\"DINNER\",\"state\":\"NONE\"},"
+                        + "{\"timing_slot\":\"BEDTIME\",\"state\":\"NONE\"}"
+                        + "],"
+                        + "\"unchecked_doses\":["
+                        + "{\"scheduled_dose_id\":12,\"hospital_name\":\"서울병원\",\"timing_slot\":\"LUNCH\","
+                        + "\"scheduled_at\":\"2026-11-09T12:30:00+09:00\","
+                        + "\"medications\":[{\"medication_id\":2,\"drug_name\":\"당귀\"}]},"
+                        + "{\"scheduled_dose_id\":11,\"hospital_name\":\"한의원\",\"timing_slot\":\"LUNCH\","
+                        + "\"scheduled_at\":\"2026-11-09T12:10:00+09:00\","
+                        + "\"medications\":[{\"medication_id\":1,\"drug_name\":\"감초\"}]}"
+                        + "],"
+                        + "\"upcoming_doses\":["
+                        + "{\"scheduled_dose_id\":14,\"hospital_name\":\"한의원\",\"timing_slot\":\"BEDTIME\","
+                        + "\"scheduled_at\":\"2026-11-09T22:00:00+09:00\","
+                        + "\"medications\":[{\"medication_id\":4,\"drug_name\":\"취침약\"}]},"
+                        + "{\"scheduled_dose_id\":13,\"hospital_name\":\"서울병원\",\"timing_slot\":\"DINNER\","
+                        + "\"scheduled_at\":\"2026-11-09T18:00:00+09:00\","
+                        + "\"medications\":[{\"medication_id\":3,\"drug_name\":\"저녁약\"}]}"
+                        + "],"
+                        + "\"next_dose\":null"
+                        + "}"
+        ));
+        Assert.assertTrue(summary.serverBoard);
+        Assert.assertEquals(Boolean.FALSE, summary.allDone);
+        Assert.assertEquals("2026-11-09T08:48:00+09:00", summary.serverTime);
+        HomeContracts.SlotProgress progress = HomeContracts.slotProgress(summary.slots);
+        Assert.assertEquals(1, progress.done);
+        Assert.assertEquals(2, progress.scheduled);
+        Assert.assertEquals(2, summary.uncheckedDoses.size());
+        Assert.assertEquals(11L, summary.uncheckedDoses.get(0).scheduledDoseId);
+        Assert.assertEquals("한의원", summary.uncheckedDoses.get(0).hospitalName);
+        Assert.assertEquals(12L, summary.uncheckedDoses.get(1).scheduledDoseId);
+        Assert.assertEquals("서울병원", summary.uncheckedDoses.get(1).hospitalName);
+        Assert.assertEquals(13L, summary.upcomingDoses.get(0).scheduledDoseId);
+        Assert.assertEquals(HomeContracts.SLOT_BEDTIME, summary.upcomingDoses.get(1).timingSlot);
+        Assert.assertEquals(
+                Long.valueOf(3L * 60L + 22L),
+                HomeContracts.minutesUntil("2026-11-09T12:10:00+09:00", summary.serverTime)
+        );
+
+        HomeContracts.HomeSummary finished = HomeContracts.readHomeSummary(new JSONObject(
+                "{"
+                        + "\"date\":\"2026-11-09\","
+                        + "\"total\":2,\"done\":1,\"normal\":1,\"delayed\":0,\"missed\":1,\"pending\":0,"
+                        + "\"all_done\":true,"
+                        + "\"slots\":[{\"timing_slot\":\"MORNING\",\"state\":\"DONE\"}],"
+                        + "\"unchecked_doses\":[],"
+                        + "\"upcoming_doses\":[],"
+                        + "\"next_dose\":null"
+                        + "}"
+        ));
+        Assert.assertEquals(Boolean.TRUE, finished.allDone);
+        Assert.assertTrue(finished.uncheckedDoses.isEmpty());
+        Assert.assertEquals(1L, finished.missed);
+    }
+
+    @Test
     public void unknownSlotStateIsNotTreatedAsSuccess() throws Exception {
         try {
             HomeContracts.readHomeSummary(new JSONObject(
@@ -365,6 +432,17 @@ public class HomeContractTest {
                 + "]");
         Assert.assertEquals(Long.valueOf(9L), HomeContracts.medicationTermsVersion(terms));
         Assert.assertNull(HomeContracts.medicationTermsVersion(new JSONArray("[]")));
+        JSONArray deviceTerms = new JSONArray("["
+                + "{\"terms_type\":\"TOS\",\"terms_version_id\":1,\"version\":\"1\",\"content\":\"a\",\"is_required\":true},"
+                + "{\"terms_type\":\"DEVICE\",\"terms_version_id\":14,\"version\":\"3\",\"content\":\"device\",\"is_required\":true}"
+                + "]");
+        Assert.assertEquals(Long.valueOf(14L), HomeContracts.deviceTermsVersion(deviceTerms));
+        Assert.assertNull(HomeContracts.deviceTermsVersion(terms));
+        JSONArray duplicateDevice = new JSONArray("["
+                + "{\"terms_type\":\"DEVICE\",\"terms_version_id\":14,\"version\":\"3\",\"content\":\"a\",\"is_required\":true},"
+                + "{\"terms_type\":\"DEVICE\",\"terms_version_id\":15,\"version\":\"4\",\"content\":\"b\",\"is_required\":true}"
+                + "]");
+        Assert.assertNull(HomeContracts.deviceTermsVersion(duplicateDevice));
         Assert.assertEquals("2026-10-27T08:10:00+09:00", HomeContracts.takenAt(
                 java.time.OffsetDateTime.parse("2026-10-27T08:10:00+09:00").toInstant().toEpochMilli()
         ));

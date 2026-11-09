@@ -30,6 +30,12 @@ public final class ApiMessages {
         if (ApiCodes.USER_NOT_FOUND.equals(code)) {
             return "존재하지 않는 계정입니다.";
         }
+        if (ApiCodes.ACCOUNT_NOT_FOUND.equals(code)) {
+            return "입력하신 정보와 일치하는 계정이 없습니다.";
+        }
+        if (ApiCodes.RATE_LIMITED.equals(code)) {
+            return "요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.";
+        }
         if (ApiCodes.INVALID_NOTIFICATION_SETTING.equals(code)) {
             return "알림 설정 요청이 올바르지 않습니다.";
         }
@@ -176,5 +182,27 @@ public final class ApiMessages {
 
     public static boolean prefersServerText(String code) {
         return ApiCodes.VALIDATION_ERROR.equals(code) || ApiCodes.INVALID_SCHEDULE.equals(code);
+    }
+
+    public static String deviceRegister(int status, String code) {
+        if (code == null || code.isEmpty()) {
+            return null;
+        }
+        if (status == 400 && ApiCodes.DEVICE_CREDENTIALS_INVALID.equals(code)) {
+            return "시리얼번호와 비밀값을 다시 확인해 주세요. 약통 하단 라벨을 확인해 보세요.";
+        }
+        if (status == 409 && ApiCodes.DEVICE_ALREADY_REGISTERED.equals(code)) {
+            return "이미 등록된 약통이 있습니다. 기존 약통을 확인해 주세요.";
+        }
+        if (status == 409 && ApiCodes.DEVICE_SERIAL_IN_USE.equals(code)) {
+            return "다른 복약자가 사용 중인 약통입니다.";
+        }
+        if (status == 403 && ApiCodes.CONSENT_REQUIRED.equals(code)) {
+            return "약통 연결을 위한 동의가 필요합니다.";
+        }
+        if (status == 429 && ApiCodes.RATE_LIMITED.equals(code)) {
+            return "약통 등록 시도 횟수를 초과했습니다. 잠시 후 다시 시도해 주세요.";
+        }
+        return null;
     }
 }

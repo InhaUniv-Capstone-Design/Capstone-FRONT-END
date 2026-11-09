@@ -44,6 +44,12 @@ public class ApiContractTest {
                 .put("verified", false));
         assertFalse(rejected.verified);
         assertNull(rejected.token);
+        AuthContracts.PhoneConfirm accepted = AuthContracts.readPhoneConfirm(new JSONObject()
+                .put("verified", true)
+                .put("verification_token", "token-1"));
+        assertTrue(accepted.verified);
+        assertEquals("token-1", accepted.token);
+        assertNull(accepted.tokenExpiresIn);
     }
 
     @Test
@@ -96,10 +102,53 @@ public class ApiContractTest {
     }
 
     @Test
+    public void findIdAndPasswordResetBodiesUseTheVerifiedPhoneProof() throws Exception {
+        JSONObject find = AuthContracts.findIdBody("홍길동", "01012345678", 15L, "proof-token");
+        assertEquals("홍길동", find.getString("name"));
+        assertEquals("01012345678", find.getString("phone"));
+        assertEquals(15L, find.getLong("verification_id"));
+        assertEquals("proof-token", find.getString("verification_token"));
+        assertEquals(4, find.length());
+
+        JSONObject reset = AuthContracts.passwordResetBody(
+                "testpatient1",
+                "01012345678",
+                15L,
+                "proof-token",
+                "NewPassword1!",
+                "NewPassword1!"
+        );
+        assertEquals("testpatient1", reset.getString("login_id"));
+        assertEquals("NewPassword1!", reset.getString("new_password"));
+        assertEquals("NewPassword1!", reset.getString("new_password_confirm"));
+        assertEquals(15L, reset.getLong("verification_id"));
+        assertEquals(6, reset.length());
+
+        java.util.List<AuthContracts.FoundAccount> accounts = AuthContracts.readFoundAccounts(new JSONObject()
+                .put("accounts", new JSONArray()
+                        .put(new JSONObject().put("login_id", "testpatient1").put("account_type", "PATIENT"))
+                        .put(new JSONObject().put("login_id", "testguardian1").put("account_type", "GUARDIAN"))));
+        assertEquals(2, accounts.size());
+        assertEquals("testpatient1", accounts.get(0).loginId);
+        assertEquals("GUARDIAN", accounts.get(1).accountType);
+        assertTrue(AuthContracts.readFoundAccounts(new JSONObject().put("accounts", new JSONArray())).isEmpty());
+    }
+
+    @Test
     public void pushBodySendsOnlyTheTokenField() throws Exception {
         JSONObject body = AuthContracts.pushTokenBody("real-token");
         assertEquals("real-token", body.getString("fcm_token"));
         assertEquals(1, body.length());
+    }
+
+    @Test
+    public void pushRegistrationSendsTheCurrentPermission() throws Exception {
+        JSONObject allowed = AuthContracts.pushRegistrationBody("real-token", true);
+        assertEquals("real-token", allowed.getString("fcm_token"));
+        assertTrue(allowed.getBoolean("notification_permitted"));
+        assertEquals(2, allowed.length());
+        JSONObject denied = AuthContracts.pushRegistrationBody("real-token", false);
+        assertFalse(denied.getBoolean("notification_permitted"));
     }
 
     @Test
@@ -275,6 +324,23 @@ public class ApiContractTest {
         assertFalse(started.outboundSms());
         assertEquals(5L, started.verificationId);
         assertEquals(300L, started.expiresIn);
+        long sentAt = 1_000_000L;
+        long deadline = AuthContracts.verificationDeadline(sentAt, started.expiresIn);
+        assertEquals(sentAt + 300_000L, deadline);
+        assertEquals(300L, AuthContracts.remainingCountdownSeconds(deadline, sentAt));
+        assertEquals("5:00", AuthContracts.countdownText(300L));
+        assertEquals(300L, AuthContracts.remainingCountdownSeconds(deadline, sentAt + 1L));
+        assertEquals(299L, AuthContracts.remainingCountdownSeconds(deadline, sentAt + 1_000L));
+        assertEquals(0L, AuthContracts.remainingCountdownSeconds(deadline, sentAt + 300_000L));
+        assertEquals("0:00", AuthContracts.countdownText(0L));
+        long resent = AuthContracts.verificationDeadline(sentAt + 20_000L, started.expiresIn);
+        assertEquals(300L, AuthContracts.remainingCountdownSeconds(resent, sentAt + 20_000L));
+        assertEquals(2_000L, AuthContracts.OUTBOUND_CONFIRM_GAP_MILLIS);
+        assertEquals(150, AuthContracts.OUTBOUND_AUTO_CONFIRM_LIMIT);
+        assertEquals(160, AuthContracts.PHONE_CODE_ATTEMPT_LIMIT);
+        assertTrue(AuthContracts.OUTBOUND_CONFIRM_GAP_MILLIS
+                * (AuthContracts.OUTBOUND_AUTO_CONFIRM_LIMIT - 1) < 300_000L);
+        assertTrue(AuthContracts.OUTBOUND_AUTO_CONFIRM_LIMIT < AuthContracts.PHONE_CODE_ATTEMPT_LIMIT);
         assertNull(started.messageText);
         assertNull(started.messageTo);
         JSONObject confirm = AuthContracts.confirmBody("000000");

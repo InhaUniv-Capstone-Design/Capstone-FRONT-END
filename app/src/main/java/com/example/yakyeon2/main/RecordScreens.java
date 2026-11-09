@@ -36,6 +36,7 @@ import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 
@@ -892,6 +893,138 @@ public final class RecordScreens {
         params.setMarginEnd(Math.round(12f * density));
         row.setLayoutParams(params);
         return row;
+    }
+
+    public static void checkServerDoses(
+            AppCompatActivity activity,
+            List<HomeContracts.Dose> doses,
+            MedScreens.Host host
+    ) {
+        Instant now = Instant.now();
+        List<HomeContracts.Dose> pending = new ArrayList<>();
+        if (doses != null) {
+            for (HomeContracts.Dose dose : doses) {
+                if (HomeContracts.followUp(dose, now) == HomeContracts.DoseFollowUp.ASK) {
+                    pending.add(dose);
+                }
+            }
+        }
+        pending.sort(Comparator.comparing(dose -> dose.scheduledAt == null ? "" : dose.scheduledAt));
+        if (pending.isEmpty()) {
+            host.showMessage(activity.getString(R.string.home_remaining_empty));
+            return;
+        }
+        if (pending.size() == 1) {
+            askTakenTime(activity, pending.get(0), host, null);
+            return;
+        }
+        View sheet = LayoutInflater.from(activity).inflate(R.layout.dialog_dose_sheet, null);
+        ((TextView) sheet.findViewById(R.id.text_sheet_title)).setText(R.string.home_overdue_title);
+        TextView message = sheet.findViewById(R.id.text_sheet_message);
+        message.setVisibility(View.VISIBLE);
+        message.setText(R.string.med_dose_ask);
+        LinearLayout options = sheet.findViewById(R.id.sheet_options);
+        Dialog dialog = presentSheet(activity, sheet);
+        boolean first = true;
+        for (HomeContracts.Dose dose : pending) {
+            String title = MainScreens.slotLabel(activity, dose.timingSlot)
+                    + " "
+                    + HomeContracts.clock(dose.scheduledAt);
+            View option = doseOption(activity, title, serverDoseDetail(activity, dose), false, !first, () -> {
+                dialog.dismiss();
+                askTakenTime(activity, dose, host, null);
+            });
+            first = false;
+            options.addView(option);
+        }
+        sheet.findViewById(R.id.button_sheet_cancel).setOnClickListener(v -> dialog.dismiss());
+        dialog.show();
+    }
+
+    public static void checkLocalDoses(
+            AppCompatActivity activity,
+            MedicationStore store,
+            MedScreens.Host host
+    ) {
+        ZoneId zone = ZoneId.systemDefault();
+        long now = System.currentTimeMillis();
+        LocalDate today = LocalDate.now(zone);
+        List<DoseRecord> pending = new ArrayList<>();
+        for (DoseRecord record : MedicationRules.onDate(store.records(), today, zone)) {
+            if (MedicationRules.canRevise(record, now)) {
+                pending.add(record);
+            }
+        }
+        pending.sort(Comparator.comparingLong(DoseRecord::getScheduledAtMillis));
+        LinkedHashMap<String, List<DoseRecord>> groups = new LinkedHashMap<>();
+        for (DoseRecord record : pending) {
+            String key = record.getEnvelopeId()
+                    + "\u001f"
+                    + record.getRound().name()
+                    + "\u001f"
+                    + record.getScheduledAtMillis();
+            List<DoseRecord> group = groups.get(key);
+            if (group == null) {
+                group = new ArrayList<>();
+                groups.put(key, group);
+            }
+            group.add(record);
+        }
+        if (groups.isEmpty()) {
+            host.showMessage(activity.getString(R.string.home_remaining_empty));
+            return;
+        }
+        if (groups.size() == 1) {
+            openTime(activity, store, groups.values().iterator().next(), host);
+            return;
+        }
+        View sheet = LayoutInflater.from(activity).inflate(R.layout.dialog_dose_sheet, null);
+        ((TextView) sheet.findViewById(R.id.text_sheet_title)).setText(R.string.home_overdue_title);
+        TextView message = sheet.findViewById(R.id.text_sheet_message);
+        message.setVisibility(View.VISIBLE);
+        message.setText(R.string.med_dose_ask);
+        LinearLayout options = sheet.findViewById(R.id.sheet_options);
+        Dialog dialog = presentSheet(activity, sheet);
+        boolean first = true;
+        for (List<DoseRecord> group : groups.values()) {
+            DoseRecord sample = group.get(0);
+            java.time.ZonedDateTime when = Instant.ofEpochMilli(sample.getScheduledAtMillis()).atZone(zone);
+            String title = MedScreens.roundLabel(activity, sample.getRound())
+                    + " "
+                    + String.format(Locale.KOREAN, "%02d:%02d", when.getHour(), when.getMinute());
+            String detail = sample.getEnvelopeName() == null ? "" : sample.getEnvelopeName().trim();
+            List<DoseRecord> chosen = group;
+            View option = doseOption(activity, title, detail, false, !first, () -> {
+                dialog.dismiss();
+                openTime(activity, store, chosen, host);
+            });
+            first = false;
+            options.addView(option);
+        }
+        sheet.findViewById(R.id.button_sheet_cancel).setOnClickListener(v -> dialog.dismiss());
+        dialog.show();
+    }
+
+    private static String serverDoseDetail(AppCompatActivity activity, HomeContracts.Dose dose) {
+        String hospital = dose.hospitalName == null || dose.hospitalName.trim().isEmpty()
+                ? activity.getString(R.string.med_slot_empty_name)
+                : dose.hospitalName.trim();
+        StringBuilder drugs = new StringBuilder();
+        if (dose.medications != null) {
+            for (HomeContracts.DoseDrug drug : dose.medications) {
+                if (drug == null || drug.drugName == null || drug.drugName.trim().isEmpty()) {
+                    continue;
+                }
+                if (drugs.length() > 0) {
+                    drugs.append(", ");
+                }
+                drugs.append(drug.drugName.trim());
+            }
+        }
+        if (drugs.length() == 0) {
+            return hospital;
+        }
+        return hospital + " · " + drugs;
     }
 
     public static Dialog askTakenTime(

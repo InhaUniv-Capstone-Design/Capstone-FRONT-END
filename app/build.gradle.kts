@@ -1,5 +1,6 @@
 plugins {
     alias(libs.plugins.android.application)
+    id("com.google.gms.google-services")
 }
 
 android {
@@ -9,7 +10,8 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.example.yakyeon2"
+        // Matches the Android app registered in app/google-services.json.
+        applicationId = "com.gamcho.yakyeon"
         minSdk = 26
         targetSdk = 37
         versionCode = 1
@@ -51,4 +53,6 @@ dependencies {
     testImplementation("org.json:json:20240303")
     androidTestImplementation(libs.espresso.core)
     androidTestImplementation(libs.ext.junit)
+    implementation(platform("com.google.firebase:firebase-bom:35.1.0"))
+    implementation("com.google.firebase:firebase-messaging")
 }

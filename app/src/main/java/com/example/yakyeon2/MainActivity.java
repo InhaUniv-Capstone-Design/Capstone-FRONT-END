@@ -1,15 +1,20 @@
 package com.example.yakyeon2;
 
 import android.Manifest;
+import android.util.Log;
 import android.app.Dialog;
+import android.content.Intent;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.view.View;
 import android.widget.FrameLayout;
+import android.widget.TextView;
 
 import androidx.activity.EdgeToEdge;
 import androidx.activity.SystemBarStyle;
@@ -35,6 +40,7 @@ import com.example.yakyeon2.api.HomeContracts;
 import com.example.yakyeon2.api.HomeRegistration;
 import com.example.yakyeon2.api.AuthApi;
 import com.example.yakyeon2.api.AuthContracts;
+import com.example.yakyeon2.api.NotificationInbox;
 import com.example.yakyeon2.api.NotificationSync;
 import com.example.yakyeon2.api.SettingsApi;
 import com.example.yakyeon2.api.SettingsContracts;
@@ -42,6 +48,8 @@ import com.example.yakyeon2.api.UserApi;
 import com.example.yakyeon2.auth.AuthFlow;
 import com.example.yakyeon2.auth.AuthScreens;
 import com.example.yakyeon2.auth.AuthValidation;
+import com.example.yakyeon2.auth.RecoveryForm;
+import com.example.yakyeon2.auth.RecoveryRules;
 import com.example.yakyeon2.auth.SignupConsent;
 import com.example.yakyeon2.data.AccountRoles;
 import com.example.yakyeon2.data.MedicationRules;
@@ -58,9 +66,12 @@ import com.example.yakyeon2.share.ShareSummaryExporter;
 import com.example.yakyeon2.data.LocalMedicationState;
 import com.example.yakyeon2.data.LocalMedicineNames;
 import com.example.yakyeon2.data.YakyeonRepositoryProvider;
+import com.example.yakyeon2.dev.ManualCheckGate;
 import com.example.yakyeon2.data.YakyeonSession;
 import com.example.yakyeon2.data.MedicationStore;
 import com.example.yakyeon2.data.EnvelopeDraft;
+import com.example.yakyeon2.fcm.FcmRegistrar;
+import com.example.yakyeon2.fcm.YakyeonNotifications;
 import com.example.yakyeon2.main.MainScreens;
 import com.example.yakyeon2.main.MedicineNamePicker;
 import com.example.yakyeon2.main.MedScreens;
@@ -75,8 +86,10 @@ import com.example.yakyeon2.navigation.DevPillboxScenarioGate;
 import com.example.yakyeon2.navigation.RegistrationChrome;
 import com.example.yakyeon2.navigation.ScreenId;
 import com.example.yakyeon2.ui.ConfirmDialog;
+import com.example.yakyeon2.ui.SavedToast;
 import com.example.yakyeon2.ui.ShortMessage;
 import com.example.yakyeon2.ui.YakyeonHeader;
+import com.example.yakyeon2.ui.YakyeonTextField;
 import com.google.android.material.bottomnavigation.BottomNavigationView;
 import com.google.android.material.snackbar.Snackbar;
 import com.google.android.material.color.MaterialColors;
@@ -87,6 +100,26 @@ public class MainActivity extends AppCompatActivity
     private static final String STATE_TAB = "state_tab";
     private static final String STATE_NON_MAIN = "state_non_main";
     private static final String STATE_AUTH = "state_auth";
+    private static final String STATE_RECOVERY_TAB = "state_recovery_tab";
+    private static final String STATE_VERIFICATION_ID = "state_verification_id";
+    private static final String STATE_VERIFICATION_TOKEN = "state_verification_token";
+    private static final String STATE_VERIFIED_PHONE = "state_verified_phone";
+    private static final String STATE_VERIFICATION_EXPIRES = "state_verification_expires";
+    private static final String STATE_TOKEN_EXPIRES = "state_token_expires";
+    private static final String STATE_PHONE_VERIFIED = "state_phone_verified";
+    private static final String STATE_MESSAGE_TEXT = "state_message_text";
+    private static final String STATE_MESSAGE_TO = "state_message_to";
+    private static final String STATE_ACCEPTED_CODE = "state_accepted_code";
+    private static final String STATE_RECOVERY_ANNOUNCED = "state_recovery_announced";
+    private static final String STATE_RECOVERY_RETRY = "state_recovery_retry";
+    private static final String STATE_PROOF_PURPOSE = "state_proof_purpose";
+    private static final String STATE_OPENED_PUSH = "state_opened_push";
+    private static final String STATE_DEVICE_SERIAL = "state_device_serial";
+    private static final String STATE_DEVICE_SECRET = "state_device_secret";
+    private static final String STATE_DEVICE_PATIENT = "state_device_patient";
+    private static final String PROOF_SIGNUP = "signup";
+    private static final String PROOF_FIND = "find-id";
+    private static final String PROOF_RESET = "reset";
 
     private final AppNavigator navigator = new AppNavigator();
     private AuthFlow authFlow;
@@ -109,6 +142,26 @@ public class MainActivity extends AppCompatActivity
     private long verificationId;
     private String verifiedPhone = "";
     private AuthContracts.PhoneVerification phoneVerification;
+    private long verificationExpiresAt;
+    private boolean phoneVerified;
+    private String verificationToken;
+    private long verificationTokenExpiresAt;
+    private final RecoveryForm recoveryForm = new RecoveryForm();
+    private boolean recoveryVerifiedAnnounced;
+    private long recoveryRetryNotBefore;
+    private String acceptedCode;
+    private String failedCode;
+    private boolean phoneConfirmInFlight;
+    private long lastOutboundConfirmAt;
+    private int outboundAutoConfirms;
+    private String proofPurpose = "";
+    private Runnable delayedPhoneConfirm;
+    private String pendingPushId;
+    private String openedPushId;
+    private final java.util.Set<Long> doseChecksInFlight =
+            java.util.Collections.synchronizedSet(new java.util.HashSet<Long>());
+    private final Handler verificationHandler = new Handler(Looper.getMainLooper());
+    private final Runnable verificationTick = this::tickVerification;
     private final java.util.List<SettingsScreens.LinkLine> managedLines = new java.util.ArrayList<>();
     private final java.util.List<SettingsScreens.LinkLine> guardianLines = new java.util.ArrayList<>();
     private final java.util.List<SettingsContracts.AgreementRecord> agreementRecords = new java.util.ArrayList<>();
@@ -121,6 +174,17 @@ public class MainActivity extends AppCompatActivity
     private boolean homeNameRequested;
     private boolean deviceWritesAllowed;
     private String deviceStatusMessage;
+    private String deviceSerialDraft = "";
+    private String deviceSecretDraft = "";
+    private Long pendingDevicePatientId;
+    private java.time.LocalDate homeShownDate;
+    private final Runnable homeDateRollover = () -> {
+        if (!isAlive()) {
+            return;
+        }
+        rollHomeToToday();
+        armHomeDateWatch();
+    };
     private Long settingsPatientId;
     private int settingsEpoch;
     private boolean graphArmed;
@@ -143,6 +207,7 @@ public class MainActivity extends AppCompatActivity
     private HomeContracts.Section<java.util.List<HomeContracts.Dose>> homeToday;
     private HomeContracts.Section<java.util.List<HomeContracts.Prescription>> homePrescriptions;
     private Long homePatientId;
+    private String homeLinkedPatientName;
     private boolean homeWrites;
     private boolean homeWriteBusy;
     private boolean scheduleLoaded;
@@ -167,12 +232,19 @@ public class MainActivity extends AppCompatActivity
     private final java.util.Set<Long> catchUpAsked = new java.util.HashSet<>();
     private HomeContracts.Dose pendingCatchUp;
     private Dialog catchUpDialog;
+    private static boolean notificationPermissionRequested;
     private boolean noticePermissionAsked;
     private final ActivityResultLauncher<String> notificationPermission = registerForActivityResult(
             new ActivityResultContracts.RequestPermission(),
             granted -> {
+                Log.d(FcmRegistrar.TAG, granted ? "알림 권한 허용" : "알림 권한 거부");
+                FcmRegistrar.syncStored(this);
                 if (granted) {
                     postCatchUpNotice(pendingCatchUp);
+                }
+                String screen = navigator.currentScreen();
+                if (MainScreens.NOTIFICATIONS.equals(screen) || SettingsScreens.NOTI_DETAIL.equals(screen)) {
+                    refresh();
                 }
             }
     );
@@ -185,6 +257,12 @@ public class MainActivity extends AppCompatActivity
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        YakyeonNotifications.ensureChannel(this);
+        FcmRegistrar.requestToken(this);
+        if (AuthTokenStore.hasUsableAccess(this)) {
+            FcmRegistrar.syncStored(this);
+        }
+        requestNotificationPermission();
         EdgeToEdge.enable(
                 this,
                 SystemBarStyle.light(Color.WHITE, Color.WHITE),
@@ -248,8 +326,25 @@ public class MainActivity extends AppCompatActivity
             }
         } else {
             restoreNavigation(savedInstanceState);
+            restoreRecovery(savedInstanceState);
         }
         render();
+        if (savedInstanceState != null) {
+            openedPushId = savedInstanceState.getString(STATE_OPENED_PUSH);
+            deviceSerialDraft = savedInstanceState.getString(STATE_DEVICE_SERIAL, "");
+            deviceSecretDraft = savedInstanceState.getString(STATE_DEVICE_SECRET, "");
+            if (savedInstanceState.containsKey(STATE_DEVICE_PATIENT)) {
+                pendingDevicePatientId = savedInstanceState.getLong(STATE_DEVICE_PATIENT);
+            }
+        }
+        openPushIfPresent(getIntent());
+    }
+
+    @Override
+    protected void onNewIntent(@NonNull Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        openPushIfPresent(intent);
     }
 
     @Override
@@ -258,6 +353,28 @@ public class MainActivity extends AppCompatActivity
         outState.putBoolean(STATE_AUTH, navigator.isInAuthFlow());
         outState.putString(STATE_TAB, navigator.currentTab().name());
         outState.putStringArray(STATE_NON_MAIN, navigator.nonMainStack().toArray(new String[0]));
+        recoveryForm.save(outState);
+        outState.putString(STATE_RECOVERY_TAB, authFlow.recoveryTab().name());
+        outState.putLong(STATE_VERIFICATION_ID, verificationId);
+        outState.putString(STATE_VERIFICATION_TOKEN, verificationToken);
+        outState.putString(STATE_VERIFIED_PHONE, verifiedPhone);
+        outState.putLong(STATE_VERIFICATION_EXPIRES, verificationExpiresAt);
+        outState.putLong(STATE_TOKEN_EXPIRES, verificationTokenExpiresAt);
+        outState.putBoolean(STATE_PHONE_VERIFIED, phoneVerified);
+        if (phoneVerification != null) {
+            outState.putString(STATE_MESSAGE_TEXT, phoneVerification.messageText);
+            outState.putString(STATE_MESSAGE_TO, phoneVerification.messageTo);
+        }
+        outState.putString(STATE_ACCEPTED_CODE, acceptedCode);
+        outState.putBoolean(STATE_RECOVERY_ANNOUNCED, recoveryVerifiedAnnounced);
+        outState.putLong(STATE_RECOVERY_RETRY, recoveryRetryNotBefore);
+        outState.putString(STATE_PROOF_PURPOSE, proofPurpose);
+        outState.putString(STATE_OPENED_PUSH, openedPushId);
+        outState.putString(STATE_DEVICE_SERIAL, deviceSerialDraft == null ? "" : deviceSerialDraft);
+        outState.putString(STATE_DEVICE_SECRET, deviceSecretDraft == null ? "" : deviceSecretDraft);
+        if (pendingDevicePatientId != null) {
+            outState.putLong(STATE_DEVICE_PATIENT, pendingDevicePatientId);
+        }
     }
 
     @Override
@@ -279,6 +396,19 @@ public class MainActivity extends AppCompatActivity
             public void onCancel() {
             }
         });
+    }
+
+    @Override
+    public void onManualCheck() {
+        if (!ManualCheckGate.available()) {
+            return;
+        }
+        if (YakyeonRepositoryProvider.get().session().getAccountType() == null) {
+            YakyeonRepositoryProvider.get().session().setAccountType(AccountType.SELF);
+        }
+        navigator.selectTab(ScreenId.HOME);
+        render();
+        ShortMessage.show(screenContainer, getString(R.string.auth_manual_check_entered));
     }
 
     @Override
@@ -310,7 +440,7 @@ public class MainActivity extends AppCompatActivity
             return;
         }
         authRequestInFlight = true;
-        showProgress(getString(R.string.auth_login_loading));
+        showProgress(getString(R.string.auth_signup_loading));
         ApiClient.execute(() -> {
             try {
                 AuthContracts.PreparedTerms prepared = AuthApi.terms(getApplicationContext());
@@ -353,6 +483,11 @@ public class MainActivity extends AppCompatActivity
             ShortMessage.show(screenContainer, getString(R.string.auth_phone_invalid));
             return;
         }
+        if (onRecoverySurface()
+                && RecoveryRules.blocksRetry(recoveryRetryNotBefore, System.currentTimeMillis())) {
+            showNotice(recoveryTitle(), getString(R.string.auth_rate_limited), null);
+            return;
+        }
         if (authRequestInFlight) {
             return;
         }
@@ -370,7 +505,21 @@ public class MainActivity extends AppCompatActivity
                     verificationId = started.verificationId;
                     verifiedPhone = digits;
                     phoneVerification = started;
+                    lastOutboundConfirmAt = 0L;
+                    outboundAutoConfirms = 0;
+                    failedCode = null;
+                    clearPhoneProof();
+                    verificationExpiresAt = AuthContracts.verificationDeadline(
+                            System.currentTimeMillis(),
+                            started.expiresIn
+                    );
+                    proofPurpose = purposeForCurrentScreen();
+                    YakyeonTextField codeField = screenContainer.findViewById(R.id.field_verification_code);
+                    if (codeField != null) {
+                        codeField.setText("");
+                    }
                     AuthScreens.applyPhoneVerification(this, screenContainer, started, this);
+                    tickVerification();
                     if (!started.outboundSms()) {
                         ShortMessage.show(screenContainer, getString(R.string.auth_code_sent));
                     }
@@ -379,10 +528,63 @@ public class MainActivity extends AppCompatActivity
                 runOnUiThread(() -> {
                     authRequestInFlight = false;
                     clearProgress();
+                    noteRecoveryRateLimit(exception);
                     showApiFailure(getString(R.string.auth_request_code), exception);
                 });
             }
         });
+    }
+
+    @Override
+    public void onPhoneDraftChanged() {
+        YakyeonTextField phone = screenContainer.findViewById(R.id.field_phone);
+        String digits = phone == null ? null : AuthContracts.phoneDigits(phone.getText());
+        if (phoneVerified && (digits == null || !digits.equals(verifiedPhone))) {
+            clearPhoneProof();
+        }
+        tickVerification();
+    }
+
+    @Override
+    public void onPhoneCodeDraft(String phone, String code) {
+        String digits = AuthContracts.phoneDigits(phone);
+        String trimmed = code == null ? "" : code.trim();
+        if (getString(R.string.auth_phone_verified).equals(trimmed)) {
+            return;
+        }
+        if (phoneVerified && (digits == null || !digits.equals(verifiedPhone) || !trimmed.equals(acceptedCode))) {
+            clearPhoneProof();
+            if (!trimmed.matches("\\d*")) {
+                YakyeonTextField field = screenContainer.findViewById(R.id.field_verification_code);
+                if (field != null) {
+                    field.setText("");
+                }
+                tickVerification();
+                return;
+            }
+        }
+        tickVerification();
+        if (phoneVerification != null && phoneVerification.outboundSms()) {
+            return;
+        }
+        if (!AuthContracts.isVerificationCode(trimmed)) {
+            failedCode = null;
+            return;
+        }
+        if (phoneVerified && trimmed.equals(acceptedCode) && digits != null && digits.equals(verifiedPhone)) {
+            return;
+        }
+        if (trimmed.equals(failedCode) || phoneConfirmInFlight || authRequestInFlight) {
+            return;
+        }
+        if (verificationId <= 0L || digits == null || !digits.equals(verifiedPhone)) {
+            return;
+        }
+        if (verificationExpiresAt <= System.currentTimeMillis()) {
+            ShortMessage.show(screenContainer, getString(R.string.auth_code_expired));
+            return;
+        }
+        confirmPhoneCode(digits, trimmed, false);
     }
 
     @Override
@@ -456,6 +658,197 @@ public class MainActivity extends AppCompatActivity
     }
 
     @Override
+    public void onOpenRecovery(AuthFlow.RecoveryTab tab) {
+        if (!AuthScreen.LOGIN.equals(navigator.currentScreen())) {
+            return;
+        }
+        recoveryForm.clear();
+        resetPhoneVerification();
+        recoveryVerifiedAnnounced = false;
+        recoveryRetryNotBefore = 0L;
+        if (authFlow.openRecovery(tab)) {
+            render();
+        }
+    }
+
+    @Override
+    public void onRecoveryTab(AuthFlow.RecoveryTab tab) {
+        if (tab == null || tab == authFlow.recoveryTab()) {
+            return;
+        }
+        authFlow.showRecoveryTab(tab);
+        resetPhoneVerification();
+        recoveryVerifiedAnnounced = false;
+        render();
+    }
+
+    @Override
+    public void onRecoveryPhoneTyped(String phone) {
+        String digits = AuthContracts.phoneDigits(phone);
+        if (verificationId > 0L && (digits == null || !digits.equals(verifiedPhone))) {
+            resetPhoneVerification();
+            recoveryVerifiedAnnounced = false;
+        }
+    }
+
+    @Override
+    public void onFindLoginId(String name, String phone) {
+        switch (AuthValidation.findId(name, phone)) {
+            case MISSING_NAME:
+                ShortMessage.show(screenContainer, getString(R.string.auth_need_name));
+                break;
+            case MISSING_PHONE:
+                ShortMessage.show(screenContainer, getString(R.string.auth_need_phone));
+                break;
+            case INVALID_PHONE:
+                ShortMessage.show(screenContainer, getString(R.string.auth_phone_invalid));
+                break;
+            case READY:
+                String digits = AuthContracts.phoneDigits(phone);
+                recoveryForm.setFindName(AuthValidation.normalizePersonName(name));
+                recoveryForm.setFindPhone(digits);
+                continueAfterIdentity(digits, true);
+                break;
+            default:
+                break;
+        }
+    }
+
+    @Override
+    public void onResetIdentityNext(String loginId, String phone) {
+        switch (AuthValidation.confirmResetIdentity(loginId, phone)) {
+            case MISSING_ID:
+                ShortMessage.show(screenContainer, getString(R.string.auth_need_id));
+                break;
+            case MISSING_PHONE:
+                ShortMessage.show(screenContainer, getString(R.string.auth_need_phone));
+                break;
+            case INVALID_ID:
+                showNotice(
+                        getString(R.string.auth_invalid_id_title),
+                        getString(R.string.auth_invalid_id_message),
+                        null
+                );
+                break;
+            case INVALID_PHONE:
+                ShortMessage.show(screenContainer, getString(R.string.auth_phone_invalid));
+                break;
+            case READY:
+                String digits = AuthContracts.phoneDigits(phone);
+                recoveryForm.setResetLoginId(loginId == null ? "" : loginId.trim());
+                recoveryForm.setResetPhone(digits);
+                continueAfterIdentity(digits, false);
+                break;
+            default:
+                break;
+        }
+    }
+
+    @Override
+    public void onRecoveryVerifiedNext() {
+        if (authRequestInFlight || phoneConfirmInFlight) {
+            return;
+        }
+        YakyeonTextField phone = screenContainer.findViewById(R.id.field_phone);
+        String digits = phone == null ? null : AuthContracts.phoneDigits(phone.getText());
+        if (!usablePhoneProof(digits)) {
+            if (phoneVerified) {
+                discardRecoveryProof();
+                showNotice(recoveryTitle(), getString(R.string.auth_verification_restart), null);
+            } else if (verificationExpiresAt > 0L && verificationExpiresAt <= System.currentTimeMillis()) {
+                ShortMessage.show(screenContainer, getString(R.string.auth_code_expired));
+            } else {
+                ShortMessage.show(screenContainer, getString(R.string.auth_verify_required));
+            }
+            return;
+        }
+        if (authFlow.recoveryTab() == AuthFlow.RecoveryTab.PASSWORD) {
+            recoveryForm.setResetPhone(digits);
+            if (authFlow.openRecoveryPassword()) {
+                render();
+            }
+            return;
+        }
+        recoveryForm.setFindPhone(digits);
+        submitFindId();
+    }
+
+    @Override
+    public void onResetPassword(String loginId, String phone, String password, String passwordConfirm) {
+        if (authRequestInFlight) {
+            return;
+        }
+        switch (AuthValidation.resetPassword(loginId, phone, password, passwordConfirm)) {
+            case MISSING_ID:
+                ShortMessage.show(screenContainer, getString(R.string.auth_need_id));
+                return;
+            case MISSING_PHONE:
+                ShortMessage.show(screenContainer, getString(R.string.auth_need_phone));
+                return;
+            case MISSING_PASSWORD:
+                ShortMessage.show(screenContainer, getString(R.string.auth_need_password));
+                return;
+            case MISSING_PASSWORD_CONFIRM:
+                ShortMessage.show(screenContainer, getString(R.string.auth_need_password_confirm));
+                return;
+            case PASSWORD_MISMATCH:
+                ShortMessage.show(screenContainer, getString(R.string.auth_reset_mismatch));
+                return;
+            case INVALID_ID:
+                showNotice(
+                        getString(R.string.auth_invalid_id_title),
+                        getString(R.string.auth_invalid_id_message),
+                        null
+                );
+                return;
+            case INVALID_PASSWORD:
+                showPasswordIssue(password);
+                return;
+            case INVALID_PHONE:
+                ShortMessage.show(screenContainer, getString(R.string.auth_phone_invalid));
+                return;
+            case READY:
+                break;
+            default:
+                return;
+        }
+        String digits = AuthContracts.phoneDigits(phone);
+        if (!usablePhoneProof(digits)) {
+            discardRecoveryProof();
+            showNotice(recoveryTitle(), getString(R.string.auth_verification_restart), null);
+            return;
+        }
+        recoveryForm.setResetLoginId(loginId.trim());
+        recoveryForm.setResetPhone(digits);
+        submitPasswordReset(loginId.trim(), digits, password, passwordConfirm);
+    }
+
+    @Override
+    public void onOpenLoginFromRecovery() {
+        recoveryForm.clear();
+        resetPhoneVerification();
+        recoveryVerifiedAnnounced = false;
+        authFlow.returnToLogin();
+        render();
+    }
+
+    @Override
+    public void onStartPasswordReset() {
+        String phone = recoveryForm.findPhone();
+        String loginId = "";
+        if (recoveryForm.accounts().size() == 1) {
+            loginId = recoveryForm.accounts().get(0).loginId;
+        }
+        recoveryForm.clear();
+        recoveryForm.setResetPhone(phone);
+        recoveryForm.setResetLoginId(loginId);
+        resetPhoneVerification();
+        recoveryVerifiedAnnounced = false;
+        if (authFlow.restartRecovery(AuthFlow.RecoveryTab.PASSWORD)) {
+            render();
+        }
+    }
+
     public void onDevHome() {
         boolean debuggable = (getApplicationInfo().flags & ApplicationInfo.FLAG_DEBUGGABLE) != 0;
         if (DevHomeGate.open(navigator, debuggable)) {
@@ -463,7 +856,6 @@ public class MainActivity extends AppCompatActivity
         }
     }
 
-    @Override
     public void onDevPillboxScenario() {
         boolean debuggable = (getApplicationInfo().flags & ApplicationInfo.FLAG_DEBUGGABLE) != 0;
         MedicationStore store = YakyeonRepositoryProvider.get().medications();
@@ -525,6 +917,13 @@ public class MainActivity extends AppCompatActivity
     }
 
     @Override
+    public void showRegisteredMedications() {
+        navigator.openOrPopTo(MedScreen.LIST);
+        render();
+        SavedToast.show(this, getString(R.string.med_registered), "");
+    }
+
+    @Override
     public void refresh() {
         render();
     }
@@ -533,6 +932,46 @@ public class MainActivity extends AppCompatActivity
     public void showPillboxTab() {
         navigator.selectTab(ScreenId.PILLBOX);
         render();
+    }
+
+    @Override
+    public void registerMedication() {
+        if (isSignedIn() && !homeWrites) {
+            showMessage(getString(R.string.med_readonly));
+            return;
+        }
+        YakyeonRepositoryProvider.get().medications().beginDraft();
+        openScreen(MedScreen.CONSENT);
+    }
+
+    private void openCalendar() {
+        if (showingSchedule()) {
+            return;
+        }
+        openScreen(MedScreen.SCHEDULE);
+    }
+
+    private boolean showingSchedule() {
+        return MedScreen.SCHEDULE.equals(navigator.currentScreen())
+                || (navigator.isMainArea() && navigator.currentTab() == ScreenId.SCHEDULE);
+    }
+
+    private String guardianPatientName(SettingsContracts.ManagedPatient patient) {
+        if (patient == null || patient.name == null
+                || !AccountRoles.GUARDIAN.equals(AuthTokenStore.accountType(this))
+                || !SettingsContracts.GUARDIAN.equals(patient.myRole)) {
+            return null;
+        }
+        String name = patient.name.trim();
+        return name.isEmpty() ? null : name;
+    }
+
+    @Override
+    protected void onDestroy() {
+        verificationHandler.removeCallbacks(verificationTick);
+        verificationHandler.removeCallbacks(homeDateRollover);
+        cancelDelayedPhoneConfirm();
+        super.onDestroy();
     }
 
     @Override
@@ -579,21 +1018,23 @@ public class MainActivity extends AppCompatActivity
             return;
         }
         String digits = AuthContracts.phoneDigits(phone);
-        if (verificationId <= 0L || !digits.equals(verifiedPhone)) {
-            ShortMessage.show(
-                    screenContainer,
-                    verificationId <= 0L
-                            ? getString(R.string.auth_verify_first)
-                            : getString(R.string.auth_phone_changed)
-            );
+        if (verificationId <= 0L || !PROOF_SIGNUP.equals(proofPurpose)) {
+            ShortMessage.show(screenContainer, getString(R.string.auth_verify_first));
+            return;
+        }
+        if (digits == null || !digits.equals(verifiedPhone)) {
+            ShortMessage.show(screenContainer, getString(R.string.auth_phone_changed));
             return;
         }
         boolean outboundSms = phoneVerification != null && phoneVerification.outboundSms();
         String verificationCode;
         if (outboundSms) {
             verificationCode = phoneVerification.messageText;
+        } else if (usablePhoneProof(digits)) {
+            verificationCode = acceptedCode;
         } else {
-            if (code == null || code.trim().isEmpty()) {
+            if (code == null || code.trim().isEmpty()
+                    || getString(R.string.auth_phone_verified).equals(code.trim())) {
                 ShortMessage.show(screenContainer, getString(R.string.auth_code_need));
                 return;
             }
@@ -610,33 +1051,50 @@ public class MainActivity extends AppCompatActivity
             ShortMessage.show(screenContainer, getString(R.string.auth_need_type));
             return;
         }
-        if (authRequestInFlight) {
+        if (authRequestInFlight || phoneConfirmInFlight) {
+            return;
+        }
+        if (!usablePhoneProof(digits) && verificationExpiresAt > 0L
+                && verificationExpiresAt <= System.currentTimeMillis()) {
+            ShortMessage.show(screenContainer, getString(R.string.auth_code_expired));
             return;
         }
         authRequestInFlight = true;
-        showProgress(getString(R.string.auth_login_loading));
+        showProgress(getString(R.string.auth_signup_loading));
         String loginId = id.trim();
         String birth = AuthContracts.isoDate(birthdate);
+        String knownToken = usablePhoneProof(digits) ? verificationToken : null;
+        long proofId = verificationId;
         ApiClient.execute(() -> {
             try {
-                AuthContracts.PhoneConfirm confirm = AuthApi.confirmPhone(
-                        getApplicationContext(),
-                        verificationId,
-                        verificationCode,
-                        digits
-                );
-                if (!confirm.verified) {
-                    runOnUiThread(() -> {
-                        authRequestInFlight = false;
-                        clearProgress();
-                        if (isAlive()) {
+                String token = knownToken;
+                if (token == null) {
+                    AuthContracts.PhoneConfirm confirm = AuthApi.confirmPhone(
+                            getApplicationContext(),
+                            proofId,
+                            verificationCode,
+                            digits
+                    );
+                    if (!confirm.verified) {
+                        runOnUiThread(() -> {
+                            authRequestInFlight = false;
+                            clearProgress();
+                            if (!isAlive()) {
+                                return;
+                            }
+                            failedCode = verificationCode;
+                            clearPhoneProof();
+                            tickVerification();
                             ShortMessage.show(
                                     screenContainer,
                                     getString(outboundSms ? R.string.auth_sms_pending : R.string.auth_code_wrong)
                             );
-                        }
-                    });
-                    return;
+                        });
+                        return;
+                    }
+                    token = confirm.token;
+                    acceptProof(digits, verificationCode, confirm);
+                    runOnUiThread(this::tickVerification);
                 }
                 AuthApi.signup(
                         getApplicationContext(),
@@ -647,32 +1105,575 @@ public class MainActivity extends AppCompatActivity
                         name.trim(),
                         birth,
                         digits,
-                        verificationId,
-                        confirm.token,
+                        proofId,
+                        token,
                         signupTerms
                 );
-                runOnUiThread(() -> {
-                    authRequestInFlight = false;
-                    clearProgress();
-                    if (!isAlive()) {
-                        return;
-                    }
-                    verificationId = 0L;
-                    verifiedPhone = "";
-                    phoneVerification = null;
-                    signupTerms = null;
-                    authFlow.returnToLogin();
-                    render();
-                    showNotice(getString(R.string.auth_signup), getString(R.string.auth_signup_created), null);
-                });
+                runOnUiThread(() -> finishSignup());
             } catch (ApiException exception) {
                 runOnUiThread(() -> {
                     authRequestInFlight = false;
                     clearProgress();
+                    tickVerification();
                     showApiFailure(getString(R.string.auth_signup), exception);
                 });
             }
         });
+    }
+
+    private void confirmPhoneCode(String digits, String code, boolean quiet) {
+        long now = System.currentTimeMillis();
+        long sinceLast = lastOutboundConfirmAt == 0L
+                ? AuthContracts.OUTBOUND_CONFIRM_GAP_MILLIS
+                : now - lastOutboundConfirmAt;
+        if (sinceLast < AuthContracts.OUTBOUND_CONFIRM_GAP_MILLIS) {
+            if (!quiet) {
+                schedulePhoneConfirm(digits, code, AuthContracts.OUTBOUND_CONFIRM_GAP_MILLIS - sinceLast);
+            }
+            return;
+        }
+        if (phoneConfirmInFlight) {
+            if (!quiet) {
+                schedulePhoneConfirm(digits, code, AuthContracts.OUTBOUND_CONFIRM_GAP_MILLIS);
+            }
+            return;
+        }
+        cancelDelayedPhoneConfirm();
+        lastOutboundConfirmAt = now;
+        if (quiet) {
+            outboundAutoConfirms++;
+        }
+        phoneConfirmInFlight = true;
+        long proofId = verificationId;
+        ApiClient.execute(() -> {
+            try {
+                AuthContracts.PhoneConfirm confirm = AuthApi.confirmPhone(
+                        getApplicationContext(),
+                        proofId,
+                        code,
+                        digits
+                );
+                runOnUiThread(() -> {
+                    phoneConfirmInFlight = false;
+                    if (!isAlive() || proofId != verificationId) {
+                        return;
+                    }
+                    if (!confirm.verified) {
+                        if (quiet) {
+                            return;
+                        }
+                        failedCode = code;
+                        clearPhoneProof();
+                        tickVerification();
+                        ShortMessage.show(
+                                screenContainer,
+                                getString(phoneVerification != null && phoneVerification.outboundSms()
+                                        ? R.string.auth_sms_pending
+                                        : R.string.auth_code_wrong)
+                        );
+                        return;
+                    }
+                    acceptProof(digits, code, confirm);
+                    tickVerification();
+                });
+            } catch (ApiException exception) {
+                runOnUiThread(() -> {
+                    phoneConfirmInFlight = false;
+                    if (exception.hasCode(ApiCodes.VERIFICATION_ATTEMPTS_EXCEEDED)
+                            || exception.hasCode(ApiCodes.VERIFICATION_EXPIRED)) {
+                        outboundAutoConfirms = AuthContracts.OUTBOUND_AUTO_CONFIRM_LIMIT;
+                    }
+                    if (!isAlive() || quiet && !exception.hasCode(ApiCodes.VERIFICATION_ATTEMPTS_EXCEEDED)
+                            && !exception.hasCode(ApiCodes.VERIFICATION_EXPIRED)) {
+                        return;
+                    }
+                    showApiFailure(getString(R.string.auth_code_label), exception);
+                });
+            }
+        });
+    }
+
+    private boolean usablePhoneProof(String digits) {
+        return phoneVerified
+                && verificationToken != null
+                && digits != null
+                && digits.equals(verifiedPhone)
+                && verificationTokenExpiresAt > System.currentTimeMillis();
+    }
+
+    private void acceptProof(String digits, String code, AuthContracts.PhoneConfirm confirm) {
+        phoneVerified = true;
+        verifiedPhone = digits;
+        verificationToken = confirm.token;
+        acceptedCode = code;
+        failedCode = null;
+        long lifetime = confirm.tokenExpiresIn == null ? 1800L : confirm.tokenExpiresIn;
+        verificationTokenExpiresAt = System.currentTimeMillis() + lifetime * 1000L;
+    }
+
+    private void clearPhoneProof() {
+        phoneVerified = false;
+        verificationToken = null;
+        verificationTokenExpiresAt = 0L;
+        acceptedCode = null;
+    }
+
+    private void schedulePhoneConfirm(String digits, String code, long delayMillis) {
+        cancelDelayedPhoneConfirm();
+        delayedPhoneConfirm = () -> {
+            delayedPhoneConfirm = null;
+            if (!isAlive() || phoneVerified) {
+                return;
+            }
+            confirmPhoneCode(digits, code, false);
+        };
+        verificationHandler.postDelayed(delayedPhoneConfirm, Math.max(0L, delayMillis));
+    }
+
+    private void cancelDelayedPhoneConfirm() {
+        if (delayedPhoneConfirm != null) {
+            verificationHandler.removeCallbacks(delayedPhoneConfirm);
+            delayedPhoneConfirm = null;
+        }
+    }
+
+    private String purposeForCurrentScreen() {
+        String screen = navigator.currentScreen();
+        if (AuthScreen.SIGNUP_FORM.equals(screen)) {
+            return PROOF_SIGNUP;
+        }
+        if (AuthScreen.isRecovery(screen)) {
+            return authFlow.recoveryTab() == AuthFlow.RecoveryTab.PASSWORD ? PROOF_RESET : PROOF_FIND;
+        }
+        return "";
+    }
+
+    private void resetPhoneVerification() {
+        verificationHandler.removeCallbacks(verificationTick);
+        cancelDelayedPhoneConfirm();
+        verificationId = 0L;
+        verifiedPhone = "";
+        phoneVerification = null;
+        verificationExpiresAt = 0L;
+        lastOutboundConfirmAt = 0L;
+        outboundAutoConfirms = 0;
+        proofPurpose = "";
+        failedCode = null;
+        clearPhoneProof();
+    }
+
+    private boolean keepsPhoneVerification(String screen) {
+        return AuthScreen.SIGNUP_FORM.equals(screen) || AuthScreen.isRecovery(screen);
+    }
+
+    private boolean onRecoverySurface() {
+        return AuthScreen.isRecovery(navigator.currentScreen());
+    }
+
+    private String recoveryTitle() {
+        return getString(authFlow.recoveryTab() == AuthFlow.RecoveryTab.PASSWORD
+                ? R.string.auth_reset_password
+                : R.string.auth_find_id);
+    }
+
+    private void continueAfterIdentity(String digits, boolean findId) {
+        if (usablePhoneProof(digits)) {
+            if (findId) {
+                submitFindId();
+            } else if (authFlow.openRecoveryPassword()) {
+                render();
+            }
+            return;
+        }
+        boolean samePhone = digits != null && digits.equals(verifiedPhone);
+        boolean expiredProof = phoneVerified && samePhone;
+        if (!samePhone || phoneVerified) {
+            resetPhoneVerification();
+            recoveryVerifiedAnnounced = false;
+        }
+        if (authFlow.openRecoveryVerify()) {
+            render();
+        }
+        if (expiredProof) {
+            ShortMessage.show(screenContainer, getString(R.string.auth_verification_restart));
+        }
+    }
+
+    private void submitFindId() {
+        if (!beginRecoveryRequest()) {
+            return;
+        }
+        String name = recoveryForm.findName();
+        String phone = recoveryForm.findPhone();
+        if (!PROOF_FIND.equals(proofPurpose) || !usablePhoneProof(phone)) {
+            releaseRecoveryControls();
+            discardRecoveryProof();
+            showNotice(recoveryTitle(), getString(R.string.auth_verification_restart), null);
+            return;
+        }
+        long proofId = verificationId;
+        String proofToken = verificationToken;
+        ApiClient.execute(() -> {
+            try {
+                java.util.List<AuthContracts.FoundAccount> accounts = AuthApi.findLoginId(
+                        getApplicationContext(),
+                        name,
+                        phone,
+                        proofId,
+                        proofToken
+                );
+                runOnUiThread(() -> {
+                    if (!isAlive()) {
+                        return;
+                    }
+                    releaseRecoveryControls();
+                    resetPhoneVerification();
+                    recoveryVerifiedAnnounced = false;
+                    recoveryForm.setAccounts(accounts);
+                    if (authFlow.openRecoveryResult()) {
+                        render();
+                    }
+                });
+            } catch (ApiException exception) {
+                runOnUiThread(() -> handleRecoveryFailure(exception));
+            }
+        });
+    }
+
+    private void submitPasswordReset(
+            String loginId,
+            String phone,
+            String password,
+            String passwordConfirm
+    ) {
+        if (!beginRecoveryRequest()) {
+            return;
+        }
+        if (!PROOF_RESET.equals(proofPurpose) || !usablePhoneProof(phone)) {
+            releaseRecoveryControls();
+            discardRecoveryProof();
+            showNotice(recoveryTitle(), getString(R.string.auth_verification_restart), null);
+            return;
+        }
+        long proofId = verificationId;
+        String proofToken = verificationToken;
+        ApiClient.execute(() -> {
+            try {
+                AuthApi.resetPassword(
+                        getApplicationContext(),
+                        loginId,
+                        phone,
+                        proofId,
+                        proofToken,
+                        password,
+                        passwordConfirm
+                );
+                AuthTokenStore.clear(getApplicationContext());
+                FcmRegistrar.noteSessionEnded(getApplicationContext());
+                runOnUiThread(() -> finishPasswordReset());
+            } catch (ApiException exception) {
+                runOnUiThread(() -> handleRecoveryFailure(exception));
+            }
+        });
+    }
+
+    private void finishPasswordReset() {
+        if (!isAlive()) {
+            return;
+        }
+        releaseRecoveryControls();
+        resetPhoneVerification();
+        recoveryVerifiedAnnounced = false;
+        AuthTokenStore.clear(this);
+        FcmRegistrar.noteSessionEnded(this);
+        if (authFlow.openRecoveryDone()) {
+            render();
+        }
+    }
+
+    private boolean beginRecoveryRequest() {
+        if (authRequestInFlight || phoneConfirmInFlight) {
+            return false;
+        }
+        if (RecoveryRules.blocksRetry(recoveryRetryNotBefore, System.currentTimeMillis())) {
+            showNotice(recoveryTitle(), getString(R.string.auth_rate_limited), null);
+            return false;
+        }
+        authRequestInFlight = true;
+        showProgress(getString(R.string.auth_recovery_loading));
+        setViewEnabled(R.id.button_find_id, false);
+        setViewEnabled(R.id.button_reset_next, false);
+        setViewEnabled(R.id.button_recovery_next, false);
+        setViewEnabled(R.id.button_reset_password, false);
+        setViewEnabled(R.id.button_request_code, false);
+        return true;
+    }
+
+    private void releaseRecoveryControls() {
+        authRequestInFlight = false;
+        clearProgress();
+        setViewEnabled(R.id.button_find_id, true);
+        setViewEnabled(R.id.button_reset_next, true);
+        setViewEnabled(R.id.button_request_code, true);
+        refreshResetButton();
+        tickVerification();
+    }
+
+    private void refreshResetButton() {
+        View button = screenContainer.findViewById(R.id.button_reset_password);
+        YakyeonTextField password = screenContainer.findViewById(R.id.field_reset_password);
+        YakyeonTextField confirm = screenContainer.findViewById(R.id.field_reset_confirm);
+        TextView error = screenContainer.findViewById(R.id.text_reset_password_error);
+        if (button == null || password == null || confirm == null || error == null) {
+            return;
+        }
+        AuthScreens.refreshResetPassword(this, error, button, password.getText(), confirm.getText());
+        if (authRequestInFlight) {
+            button.setEnabled(false);
+        }
+    }
+
+    private void handleRecoveryFailure(ApiException exception) {
+        if (!isAlive()) {
+            return;
+        }
+        authRequestInFlight = false;
+        clearProgress();
+        if (exception.endsSession()) {
+            showApiFailure(recoveryTitle(), exception);
+            return;
+        }
+        noteRecoveryRateLimit(exception);
+        RecoveryRules.Notice notice = RecoveryRules.noticeFor(exception.code());
+        if (!RecoveryRules.keepsProof(exception.code())) {
+            discardRecoveryProof();
+        } else if (notice == RecoveryRules.Notice.ACCOUNT_MISSING
+                && AuthScreen.ACCOUNT_RECOVERY_VERIFY.equals(navigator.currentScreen())) {
+            if (authFlow.backToRecoveryForm()) {
+                render();
+            }
+        } else {
+            setViewEnabled(R.id.button_find_id, true);
+            setViewEnabled(R.id.button_reset_next, true);
+            setViewEnabled(R.id.button_request_code, true);
+            refreshResetButton();
+            tickVerification();
+        }
+        switch (notice) {
+            case ACCOUNT_MISSING:
+                showNotice(recoveryTitle(), getString(R.string.auth_account_not_found), null);
+                break;
+            case VERIFICATION_RESTART:
+                showNotice(recoveryTitle(), getString(R.string.auth_verification_restart), null);
+                break;
+            case RATE_LIMIT:
+                showNotice(recoveryTitle(), getString(R.string.auth_rate_limited), null);
+                break;
+            case PASSWORD_MISMATCH:
+                showNotice(recoveryTitle(), getString(R.string.auth_reset_mismatch), null);
+                break;
+            case VALIDATION:
+                showNotice(
+                        recoveryTitle(),
+                        textOr(exception.getMessage(), getString(R.string.auth_recovery_validation)),
+                        null
+                );
+                break;
+            default:
+                showApiFailure(recoveryTitle(), exception);
+                break;
+        }
+    }
+
+    private void discardRecoveryProof() {
+        resetPhoneVerification();
+        recoveryVerifiedAnnounced = false;
+        if (authFlow.reopenRecoveryVerify()) {
+            render();
+        }
+    }
+
+    private void noteRecoveryRateLimit(ApiException exception) {
+        if (!onRecoverySurface()) {
+            return;
+        }
+        RecoveryRules.Notice notice = RecoveryRules.noticeFor(exception.code());
+        if (notice == RecoveryRules.Notice.RATE_LIMIT) {
+            recoveryRetryNotBefore = System.currentTimeMillis() + RecoveryRules.RATE_LIMIT_COOLDOWN_MS;
+        }
+    }
+
+    private void showPasswordIssue(String password) {
+        int message;
+        switch (AuthValidation.passwordIssue(password)) {
+            case TOO_SHORT:
+                message = R.string.auth_password_too_short;
+                break;
+            case TOO_LONG:
+                message = R.string.auth_password_too_long;
+                break;
+            case NEED_LETTER:
+                message = R.string.auth_password_need_letter;
+                break;
+            case NEED_DIGIT:
+                message = R.string.auth_password_need_digit;
+                break;
+            case NEED_SPECIAL:
+                message = R.string.auth_password_need_special;
+                break;
+            default:
+                message = R.string.auth_invalid_password_message;
+                break;
+        }
+        showNotice(getString(R.string.auth_invalid_password_title), getString(message), null);
+    }
+
+    private void expireRecoveryTokenIfNeeded() {
+        if (!phoneVerified || verificationTokenExpiresAt <= 0L) {
+            return;
+        }
+        if (verificationTokenExpiresAt > System.currentTimeMillis()) {
+            return;
+        }
+        resetPhoneVerification();
+        recoveryVerifiedAnnounced = false;
+        ShortMessage.show(screenContainer, getString(R.string.auth_verification_restart));
+    }
+
+    private void paintRecoveryVerifyChrome() {
+        TextView done = screenContainer.findViewById(R.id.text_code_verified);
+        if (done != null) {
+            done.setText(getString(R.string.auth_phone_verified_done));
+        }
+        TextView sms = screenContainer.findViewById(R.id.text_sms_code);
+        if (sms != null && phoneVerified) {
+            sms.setText(getString(R.string.auth_phone_verified_done));
+            sms.setLetterSpacing(0f);
+        }
+        YakyeonTextField phone = screenContainer.findViewById(R.id.field_phone);
+        String digits = phone == null ? null : AuthContracts.phoneDigits(phone.getText());
+        View next = screenContainer.findViewById(R.id.button_recovery_next);
+        if (next != null) {
+            next.setEnabled(!authRequestInFlight && usablePhoneProof(digits));
+        }
+        if (usablePhoneProof(digits) && !recoveryVerifiedAnnounced) {
+            recoveryVerifiedAnnounced = true;
+            showNotice(recoveryTitle(), getString(R.string.auth_phone_verified_done), null);
+        }
+    }
+
+    private void setViewEnabled(int id, boolean enabled) {
+        View view = screenContainer.findViewById(id);
+        if (view != null) {
+            view.setEnabled(enabled);
+        }
+    }
+
+    private void restoreRecovery(Bundle savedState) {
+        recoveryForm.restore(savedState);
+        String tab = savedState.getString(STATE_RECOVERY_TAB);
+        if (tab != null) {
+            try {
+                authFlow.restoreRecoveryTab(AuthFlow.RecoveryTab.valueOf(tab));
+            } catch (IllegalArgumentException ignored) {
+                authFlow.restoreRecoveryTab(AuthFlow.RecoveryTab.ID);
+            }
+        }
+        verificationId = savedState.getLong(STATE_VERIFICATION_ID, 0L);
+        verifiedPhone = savedState.getString(STATE_VERIFIED_PHONE, "");
+        if (verifiedPhone == null) {
+            verifiedPhone = "";
+        }
+        verificationExpiresAt = savedState.getLong(STATE_VERIFICATION_EXPIRES, 0L);
+        verificationTokenExpiresAt = savedState.getLong(STATE_TOKEN_EXPIRES, 0L);
+        phoneVerified = savedState.getBoolean(STATE_PHONE_VERIFIED, false);
+        verificationToken = phoneVerified ? savedState.getString(STATE_VERIFICATION_TOKEN) : null;
+        phoneVerification = AuthContracts.remembered(
+                verificationId,
+                savedState.getString(STATE_MESSAGE_TEXT),
+                savedState.getString(STATE_MESSAGE_TO)
+        );
+        acceptedCode = savedState.getString(STATE_ACCEPTED_CODE);
+        recoveryVerifiedAnnounced = savedState.getBoolean(STATE_RECOVERY_ANNOUNCED, false);
+        recoveryRetryNotBefore = savedState.getLong(STATE_RECOVERY_RETRY, 0L);
+        proofPurpose = savedState.getString(STATE_PROOF_PURPOSE, "");
+        if (proofPurpose == null) {
+            proofPurpose = "";
+        }
+        if (proofPurpose.isEmpty() && verificationId > 0L) {
+            proofPurpose = purposeForCurrentScreen();
+        }
+    }
+
+    private void finishSignup() {
+        authRequestInFlight = false;
+        clearProgress();
+        if (!isAlive()) {
+            return;
+        }
+        verificationId = 0L;
+        verifiedPhone = "";
+        phoneVerification = null;
+        verificationExpiresAt = 0L;
+        clearPhoneProof();
+        signupTerms = null;
+        verificationHandler.removeCallbacks(verificationTick);
+        authFlow.returnToLogin();
+        render();
+        showNotice(getString(R.string.auth_signup), getString(R.string.auth_signup_created), null);
+    }
+
+    private void tickVerification() {
+        verificationHandler.removeCallbacks(verificationTick);
+        if (!isAlive()) {
+            return;
+        }
+        String screen = navigator.currentScreen();
+        boolean signup = AuthScreen.SIGNUP_FORM.equals(screen);
+        boolean recoveryVerify = AuthScreen.ACCOUNT_RECOVERY_VERIFY.equals(screen);
+        if (!signup && !recoveryVerify) {
+            return;
+        }
+        if (recoveryVerify) {
+            expireRecoveryTokenIfNeeded();
+        }
+        AuthScreens.paintVerification(
+                screenContainer,
+                verifiedPhone,
+                phoneVerified,
+                verificationExpiresAt
+        );
+        if (recoveryVerify) {
+            paintRecoveryVerifyChrome();
+        }
+        maybeConfirmOutbound();
+        if (verificationId > 0L && verificationExpiresAt > System.currentTimeMillis()) {
+            verificationHandler.postDelayed(verificationTick, 1000L);
+        }
+    }
+
+    private void maybeConfirmOutbound() {
+        if (phoneVerified || phoneConfirmInFlight || authRequestInFlight) {
+            return;
+        }
+        if (phoneVerification == null || !phoneVerification.outboundSms()) {
+            return;
+        }
+        if (verificationId <= 0L || verificationExpiresAt <= System.currentTimeMillis()) {
+            return;
+        }
+        if (AuthContracts.phoneDigits(verifiedPhone) == null) {
+            return;
+        }
+        if (outboundAutoConfirms >= AuthContracts.OUTBOUND_AUTO_CONFIRM_LIMIT) {
+            return;
+        }
+        long now = System.currentTimeMillis();
+        if (lastOutboundConfirmAt != 0L
+                && now - lastOutboundConfirmAt < AuthContracts.OUTBOUND_CONFIRM_GAP_MILLIS) {
+            return;
+        }
+        confirmPhoneCode(verifiedPhone, phoneVerification.messageText, true);
     }
 
     private void restoreNavigation(Bundle savedInstanceState) {
@@ -694,6 +1695,14 @@ public class MainActivity extends AppCompatActivity
     }
 
     private void render() {
+        if (MedScreen.HISTORY.equals(navigator.currentScreen())) {
+            navigator.pop();
+            navigator.openNonMain(MedScreen.SCHEDULE);
+        }
+        if (navigator.isMainArea() && navigator.currentTab() == ScreenId.SCHEDULE) {
+            navigator.selectTab(ScreenId.HOME);
+            navigator.openNonMain(MedScreen.SCHEDULE);
+        }
         if (!MedScreen.SLOT.equals(navigator.currentScreen())) {
             YakyeonRepositoryProvider.get().medications().cancelSlotAssign();
         }
@@ -704,6 +1713,9 @@ public class MainActivity extends AppCompatActivity
         }
         boolean main = navigator.isMainArea();
         String screen = navigator.currentScreen();
+        if (!keepsPhoneVerification(screen)) {
+            resetPhoneVerification();
+        }
         boolean login = AuthScreen.LOGIN.equals(screen);
         boolean showNav = RegistrationChrome.showsBottomNav(main, screen)
                 || SettingsScreens.PILLBOX_SEARCH.equals(screen);
@@ -731,13 +1743,9 @@ public class MainActivity extends AppCompatActivity
             root.setBackgroundColor(getColor(R.color.white));
         }
         if (main || RegistrationChrome.usesCommentAction(screen)) {
-            header.setActionIcon(R.drawable.ic_yakyeon_comment, v -> {
-                if (!MedScreen.HISTORY.equals(navigator.currentScreen())) {
-                    openScreen(MedScreen.HISTORY);
-                }
-            });
-        } else if (!login && !navigator.isInAuthFlow() && !MedScreen.HISTORY.equals(screen)) {
-            header.setActionIcon(R.drawable.ic_yakyeon_comment, v -> openScreen(MedScreen.HISTORY));
+            header.setActionIcon(R.drawable.ic_tab_calendar, v -> openCalendar());
+        } else if (!login && !navigator.isInAuthFlow() && !showingSchedule()) {
+            header.setActionIcon(R.drawable.ic_tab_calendar, v -> openCalendar());
         } else {
             header.setAction(null, null);
         }
@@ -754,7 +1762,7 @@ public class MainActivity extends AppCompatActivity
         if (needsServerHome(screen)) {
             ensureHomeLoaded();
         }
-        if (isSignedIn() && MedScreen.SCHEDULE.equals(screen)) {
+        if (isSignedIn() && showingSchedule()) {
             ensureScheduleLoaded();
         }
         if (isSignedIn() && MedScreen.HISTORY.equals(screen)) {
@@ -765,6 +1773,25 @@ public class MainActivity extends AppCompatActivity
         View content;
         if (login) {
             content = AuthScreens.login(this, this);
+        } else if (AuthScreen.ACCOUNT_RECOVERY.equals(screen)) {
+            content = AuthScreens.accountRecovery(this, this, authFlow.recoveryTab(), recoveryForm);
+        } else if (AuthScreen.ACCOUNT_RECOVERY_VERIFY.equals(screen)) {
+            content = AuthScreens.recoveryVerify(
+                    this,
+                    this,
+                    recoveryForm,
+                    authFlow.recoveryTab(),
+                    phoneVerification,
+                    verifiedPhone,
+                    phoneVerified,
+                    verificationExpiresAt
+            );
+        } else if (AuthScreen.ACCOUNT_RECOVERY_RESULT.equals(screen)) {
+            content = AuthScreens.recoveryResult(this, this, recoveryForm.accounts());
+        } else if (AuthScreen.ACCOUNT_RECOVERY_PASSWORD.equals(screen)) {
+            content = AuthScreens.recoveryPassword(this, this, recoveryForm);
+        } else if (AuthScreen.ACCOUNT_RECOVERY_DONE.equals(screen)) {
+            content = AuthScreens.recoveryDone(this, this);
         } else if (AuthScreen.SIGNUP_TYPE.equals(screen)) {
             content = AuthScreens.signupType(
                     this,
@@ -772,7 +1799,14 @@ public class MainActivity extends AppCompatActivity
                     this
             );
         } else if (AuthScreen.SIGNUP_FORM.equals(screen)) {
-            content = AuthScreens.signupForm(this, this, phoneVerification);
+            content = AuthScreens.signupForm(
+                    this,
+                    this,
+                    phoneVerification,
+                    verifiedPhone,
+                    phoneVerified,
+                    verificationExpiresAt
+            );
         } else if (main) {
             content = mainTab(navigator.currentTab());
         } else if (MedScreen.isMedication(screen)) {
@@ -797,6 +1831,7 @@ public class MainActivity extends AppCompatActivity
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.MATCH_PARENT
         ));
+        tickVerification();
         maybeSyncAccountScreens(navigator.currentScreen());
         if (AuthScreen.LOGIN.equals(navigator.currentScreen())) {
             setLoginEnabled(!loginInFlight);
@@ -905,6 +1940,9 @@ public class MainActivity extends AppCompatActivity
         if (tab == ScreenId.SETTINGS) {
             return MainScreens.settings(this, session.getAccountType(), this);
         }
+        if (tab == ScreenId.SCHEDULE) {
+            return scheduleContent();
+        }
         if (isSignedIn()) {
             ensureHomeName();
             return MainScreens.serverHome(
@@ -918,11 +1956,27 @@ public class MainActivity extends AppCompatActivity
                     this,
                     debuggable(),
                     signedInName(),
-                    awaitingPatientLink()
+                    awaitingPatientLink(),
+                    homeLinkedPatientName
             );
         }
         MedicationStore store = YakyeonRepositoryProvider.get().medications();
-        return MainScreens.home(this, session, store, this, debuggable(), signedInName());
+        return MainScreens.home(this, session, store, this, debuggable(), signedInName(), null);
+    }
+
+    private View scheduleContent() {
+        if (isSignedIn()) {
+            return RecordScreens.serverSchedule(
+                    this,
+                    scheduleDate,
+                    scheduleView,
+                    scheduleMessage,
+                    scheduleDoses,
+                    homeWrites,
+                    this
+            );
+        }
+        return RecordScreens.schedule(this, YakyeonRepositoryProvider.get().medications(), this);
     }
 
     private View medicationScreen(String screen) {
@@ -960,18 +2014,7 @@ public class MainActivity extends AppCompatActivity
             return MedScreens.envelope(this, store, session, this, debuggable());
         }
         if (MedScreen.SCHEDULE.equals(screen)) {
-            if (isSignedIn()) {
-                return RecordScreens.serverSchedule(
-                        this,
-                        scheduleDate,
-                        scheduleView,
-                        scheduleMessage,
-                        scheduleDoses,
-                        homeWrites,
-                        this
-                );
-            }
-            return RecordScreens.schedule(this, store, this);
+            return scheduleContent();
         }
         if (isSignedIn()) {
             return RecordScreens.serverHistory(
@@ -991,6 +2034,19 @@ public class MainActivity extends AppCompatActivity
     private String detailTitle(String screen) {
         if (AuthScreen.SIGNUP_TYPE.equals(screen) || AuthScreen.SIGNUP_FORM.equals(screen)) {
             return getString(R.string.auth_signup);
+        }
+        if (AuthScreen.ACCOUNT_RECOVERY.equals(screen)) {
+            return recoveryTitle();
+        }
+        if (AuthScreen.ACCOUNT_RECOVERY_VERIFY.equals(screen)) {
+            return getString(R.string.auth_verify_title);
+        }
+        if (AuthScreen.ACCOUNT_RECOVERY_RESULT.equals(screen)) {
+            return getString(R.string.auth_find_result_title);
+        }
+        if (AuthScreen.ACCOUNT_RECOVERY_PASSWORD.equals(screen)
+                || AuthScreen.ACCOUNT_RECOVERY_DONE.equals(screen)) {
+            return getString(R.string.auth_reset_password);
         }
         if (MedScreen.ALARM.equals(screen)) {
             MedicationStore store = YakyeonRepositoryProvider.get().medications();
@@ -1036,6 +2092,8 @@ public class MainActivity extends AppCompatActivity
         switch (screen) {
             case HOME:
                 return R.string.tab_home;
+            case SCHEDULE:
+                return R.string.tab_schedule;
             case GRAPH:
                 return R.string.tab_graph;
             case PILLBOX:
@@ -1180,6 +2238,7 @@ public class MainActivity extends AppCompatActivity
         }
         ApiClient.execute(() -> {
             try {
+                FcmRegistrar.deleteStored(getApplicationContext());
                 boolean serverCalled = AuthApi.logout(getApplicationContext());
                 runOnUiThread(() -> {
                     finishAccountRequest();
@@ -1310,6 +2369,7 @@ public class MainActivity extends AppCompatActivity
         ApiClient.execute(() -> {
             try {
                 AuthApi.login(getApplicationContext(), loginId, password);
+                FcmRegistrar.syncStored(getApplicationContext());
                 runOnUiThread(() -> {
                     loginInFlight = false;
                     clearProgress();
@@ -1333,6 +2393,7 @@ public class MainActivity extends AppCompatActivity
         ApiClient.execute(() -> {
             try {
                 AuthApi.refresh(getApplicationContext());
+                FcmRegistrar.syncStored(getApplicationContext());
                 runOnUiThread(() -> {
                     if (!isAlive()) {
                         return;
@@ -1368,10 +2429,20 @@ public class MainActivity extends AppCompatActivity
     @Override
     protected void onResume() {
         super.onResume();
+        armHomeDateWatch();
+        boolean dateChanged = noteHomeDate();
         if (!returnedFromBackground || !isSignedIn() || !isAlive()) {
+            if (dateChanged && isAlive()) {
+                rollHomeToToday();
+            }
             return;
         }
         returnedFromBackground = false;
+        FcmRegistrar.syncStored(this);
+        String screen = navigator.currentScreen();
+        if (MainScreens.NOTIFICATIONS.equals(screen) || SettingsScreens.NOTI_DETAIL.equals(screen)) {
+            refresh();
+        }
         reloadVisibleShareScope();
     }
 
@@ -1381,7 +2452,7 @@ public class MainActivity extends AppCompatActivity
             homeArmed = false;
             ensureHomeLoaded();
         }
-        if (MedScreen.SCHEDULE.equals(screen)) {
+        if (showingSchedule()) {
             scheduleLoaded = false;
             ensureScheduleLoaded();
         }
@@ -1536,6 +2607,11 @@ public class MainActivity extends AppCompatActivity
         applyStoredAccountType();
         navigator.selectTab(ScreenId.HOME);
         render();
+        if (pendingPushId != null && !pendingPushId.isEmpty()) {
+            String id = pendingPushId;
+            pendingPushId = null;
+            loadPushDetail(id);
+        }
     }
 
     private void showLoginScreen() {
@@ -1555,6 +2631,7 @@ public class MainActivity extends AppCompatActivity
     }
 
     private void clearLocalAccount() {
+        FcmRegistrar.noteSessionEnded(this);
         LocalAccountData.wipe(this);
         YakyeonRepositoryProvider.get().medications().discardAccountData();
         YakyeonRepositoryProvider.get().medicineNames().restore(java.util.Collections.<String>emptyList());
@@ -1570,6 +2647,7 @@ public class MainActivity extends AppCompatActivity
         devicePanel = null;
         deviceWritesAllowed = false;
         deviceStatusMessage = null;
+        clearDeviceDraft();
         settingsPatientId = null;
         graphArmed = false;
         graphEpoch++;
@@ -1813,85 +2891,111 @@ public class MainActivity extends AppCompatActivity
         if (!isSignedIn()) {
             return;
         }
-        if (!beginAccountRequest(getString(R.string.settings_noti_saving))) {
+        String serial = deviceSerialDraft == null ? "" : deviceSerialDraft;
+        String secretValue = deviceSecretDraft == null ? "" : deviceSecretDraft;
+        if (serial.trim().isEmpty() || secretValue.trim().isEmpty()) {
+            showNotice(getString(R.string.pillbox_settings), getString(R.string.pillbox_register_need_both));
             return;
         }
+        if (!beginAccountRequest(getString(R.string.pillbox_register_loading))) {
+            return;
+        }
+        long remembered = pendingDevicePatientId == null ? 0L : pendingDevicePatientId;
         String accountType = AuthTokenStore.accountType(this);
         ApiClient.execute(() -> {
             try {
                 java.util.List<SettingsContracts.ManagedPatient> patients = SettingsApi.managedPatients(
                         getApplicationContext()
                 );
-                SettingsContracts.ResolvedPatient target = SettingsContracts.resolveForSettings(
-                        patients,
-                        accountType
-                );
-                if (target.resolution != SettingsContracts.Resolution.ONE) {
-                    runOnUiThread(() -> {
-                        finishAccountRequest();
-                        if (!isAlive()) {
-                            return;
-                        }
-                        showNotice(
-                                getString(R.string.pillbox_settings),
-                                getString(target.resolution == SettingsContracts.Resolution.SEVERAL
-                                        ? R.string.settings_patient_several
-                                        : R.string.settings_patient_none)
-                        );
-                    });
+                SettingsContracts.ManagedPatient patient;
+                if (remembered > 0L) {
+                    patient = findPatient(patients, remembered);
+                    if (patient == null) {
+                        finishDeviceNotice(getString(R.string.settings_patient_none));
+                        return;
+                    }
+                } else {
+                    SettingsContracts.ResolvedPatient target = SettingsContracts.resolveForSettings(
+                            patients,
+                            accountType
+                    );
+                    if (target.resolution != SettingsContracts.Resolution.ONE) {
+                        finishDeviceNotice(getString(target.resolution == SettingsContracts.Resolution.SEVERAL
+                                ? R.string.settings_patient_several
+                                : R.string.settings_patient_none));
+                        return;
+                    }
+                    patient = findPatient(patients, target.patientId);
+                }
+                if (patient == null) {
+                    finishDeviceNotice(getString(R.string.settings_patient_none));
                     return;
                 }
-                SettingsContracts.ManagedPatient patient = findPatient(patients, target.patientId);
                 if (!CareContracts.writesAllowed(patient)) {
-                    runOnUiThread(() -> {
-                        finishAccountRequest();
-                        if (!isAlive()) {
-                            return;
-                        }
-                        showNotice(getString(R.string.pillbox_settings), getString(R.string.pillbox_read_only));
-                    });
+                    finishDeviceNotice(getString(R.string.pillbox_read_only));
                     return;
                 }
+                if (CareContracts.shareWithheld(patient, CareContracts.DEVICE_EVENT)) {
+                    finishDeviceNotice(getString(R.string.care_share_withheld));
+                    return;
+                }
+                long patientId = patient.patientId;
+                pendingDevicePatientId = patientId;
                 java.util.List<SettingsContracts.AgreementRecord> records = SettingsApi.agreements(
                         getApplicationContext()
                 );
-                Long versionId = SettingsContracts.versionId(records, SettingsContracts.DEVICE);
                 SettingsContracts.AgreementRecord deviceTerms = deviceAgreement(records);
-                if (versionId == null || deviceTerms == null) {
+                if (deviceTerms == null || !deviceTerms.agreed) {
+                    Long versionId;
+                    try {
+                        versionId = HomeApi.deviceTermsVersion(getApplicationContext());
+                    } catch (ApiException termsError) {
+                        failDeviceConsent(termsError);
+                        return;
+                    }
+                    if (versionId == null) {
+                        finishDeviceNotice(getString(R.string.pillbox_consent_terms_missing));
+                        return;
+                    }
+                    try {
+                        SettingsApi.agree(getApplicationContext(), versionId, true);
+                    } catch (ApiException agreeError) {
+                        failDeviceConsent(agreeError);
+                        return;
+                    }
+                }
+                try {
+                    CareApi.registerDevice(
+                            getApplicationContext(),
+                            patientId,
+                            serial,
+                            secretValue,
+                            null
+                    );
+                } catch (ApiException registerError) {
                     runOnUiThread(() -> {
-                        finishAccountRequest();
+                        finishDeviceRegisterAttempt();
                         if (!isAlive()) {
                             return;
                         }
+                        if (registerError.endsSession()) {
+                            showApiFailure(getString(R.string.pillbox_settings), registerError);
+                            return;
+                        }
+                        String specific = ApiMessages.deviceRegister(
+                                registerError.status(),
+                                registerError.code()
+                        );
                         showNotice(
                                 getString(R.string.pillbox_settings),
-                                getString(R.string.pillbox_consent_missing_version)
+                                specific != null ? specific : careMessage(registerError)
                         );
                     });
                     return;
                 }
-                if (!deviceTerms.agreed) {
-                    SettingsApi.agree(getApplicationContext(), versionId, true);
-                }
-                runOnUiThread(() -> {
-                    finishAccountRequest();
-                    if (!isAlive()) {
-                        return;
-                    }
-                    showNotice(getString(R.string.pillbox_settings), getString(R.string.pillbox_qr_required));
-                });
+                runOnUiThread(this::onDeviceRegistered);
             } catch (ApiException exception) {
-                runOnUiThread(() -> {
-                    finishAccountRequest();
-                    if (!isAlive()) {
-                        return;
-                    }
-                    if (exception.endsSession()) {
-                        showApiFailure(getString(R.string.pillbox_settings), exception);
-                        return;
-                    }
-                    showNotice(getString(R.string.pillbox_settings), careMessage(exception));
-                });
+                failDeviceConsent(exception);
             }
         });
     }
@@ -2873,14 +3977,28 @@ public class MainActivity extends AppCompatActivity
     }
 
     @Override
+    public String deviceSerialDraft() {
+        return deviceSerialDraft == null ? "" : deviceSerialDraft;
+    }
+
+    @Override
+    public String deviceSecretDraft() {
+        return deviceSecretDraft == null ? "" : deviceSecretDraft;
+    }
+
+    @Override
     public void registerDevice(String serialNo, String secret) {
-        String serial = serialNo == null ? "" : serialNo.trim();
-        String secretValue = secret == null ? "" : secret.trim();
-        if (serial.isEmpty() || secretValue.isEmpty()) {
+        String serial = serialNo == null ? "" : serialNo;
+        String secretValue = secret == null ? "" : secret;
+        deviceSerialDraft = serial;
+        deviceSecretDraft = secretValue;
+        if (serial.trim().isEmpty() || secretValue.trim().isEmpty()) {
             showNotice(getString(R.string.pillbox_settings), getString(R.string.pillbox_register_need_both));
+            unlockPillboxRegisterButton();
             return;
         }
         if (!beginAccountRequest(getString(R.string.pillbox_register_loading))) {
+            unlockPillboxRegisterButton();
             return;
         }
         String accountType = AuthTokenStore.accountType(this);
@@ -2895,7 +4013,7 @@ public class MainActivity extends AppCompatActivity
                 );
                 if (target.resolution != SettingsContracts.Resolution.ONE) {
                     runOnUiThread(() -> {
-                        finishAccountRequest();
+                        finishDeviceRegisterAttempt();
                         if (!isAlive()) {
                             return;
                         }
@@ -2911,31 +4029,27 @@ public class MainActivity extends AppCompatActivity
                 SettingsContracts.ManagedPatient patient = findPatient(patients, target.patientId);
                 if (!CareContracts.writesAllowed(patient)) {
                     runOnUiThread(() -> {
-                        finishAccountRequest();
+                        finishDeviceRegisterAttempt();
                         showNotice(getString(R.string.pillbox_settings), getString(R.string.pillbox_read_only));
                     });
                     return;
                 }
                 if (CareContracts.shareWithheld(patient, CareContracts.DEVICE_EVENT)) {
                     runOnUiThread(() -> {
-                        finishAccountRequest();
+                        finishDeviceRegisterAttempt();
                         showNotice(getString(R.string.pillbox_settings), getString(R.string.care_share_withheld));
                     });
                     return;
                 }
+                pendingDevicePatientId = target.patientId;
                 CareApi.registerDevice(getApplicationContext(), target.patientId, serial, secretValue, null);
+                runOnUiThread(this::onDeviceRegistered);
+            } catch (ApiException exception) {
                 runOnUiThread(() -> {
-                    finishAccountRequest();
+                    finishDeviceRegisterAttempt();
                     if (!isAlive()) {
                         return;
                     }
-                    showNotice(getString(R.string.pillbox_settings), getString(R.string.pillbox_register_done));
-                    accountSyncKey = null;
-                    showPillboxTab();
-                });
-            } catch (ApiException exception) {
-                runOnUiThread(() -> {
-                    finishAccountRequest();
                     if (exception.endsSession()) {
                         showApiFailure(getString(R.string.pillbox_settings), exception);
                         return;
@@ -2943,10 +4057,129 @@ public class MainActivity extends AppCompatActivity
                     if (ApiCodes.DEVICE_NOT_FOUND.equals(exception.code())) {
                         forgetLocalPillbox();
                     }
+                    String specific = ApiMessages.deviceRegister(exception.status(), exception.code());
+                    if (specific != null) {
+                        boolean needsConsent = exception.status() == 403
+                                && ApiCodes.CONSENT_REQUIRED.equals(exception.code());
+                        showNotice(
+                                getString(R.string.pillbox_settings),
+                                specific,
+                                needsConsent ? () -> openDetail(SettingsScreens.PILLBOX_CONSENT) : null
+                        );
+                        return;
+                    }
                     showNotice(getString(R.string.pillbox_settings), careMessage(exception));
                 });
             }
         });
+    }
+
+    private void clearDeviceDraft() {
+        deviceSerialDraft = "";
+        deviceSecretDraft = "";
+        pendingDevicePatientId = null;
+    }
+
+    private void onDeviceRegistered() {
+        finishAccountRequest();
+        if (!isAlive()) {
+            return;
+        }
+        clearDeviceDraft();
+        showNotice(getString(R.string.pillbox_settings), getString(R.string.pillbox_register_done));
+        accountSyncKey = null;
+        devicePanel = null;
+        deviceReady = false;
+        deviceStatusMessage = null;
+        pillboxArmed = false;
+        clearHomeCache();
+        showPillboxTab();
+    }
+
+    private void finishDeviceNotice(String message) {
+        runOnUiThread(() -> {
+            finishAccountRequest();
+            unlockPillboxRegisterButton();
+            if (!isAlive()) {
+                return;
+            }
+            showNotice(getString(R.string.pillbox_settings), message);
+        });
+    }
+
+    private void failDeviceConsent(ApiException exception) {
+        runOnUiThread(() -> {
+            finishAccountRequest();
+            unlockPillboxRegisterButton();
+            if (!isAlive()) {
+                return;
+            }
+            if (exception.endsSession()) {
+                showApiFailure(getString(R.string.pillbox_settings), exception);
+                return;
+            }
+            showNotice(getString(R.string.pillbox_settings), careMessage(exception));
+        });
+    }
+
+    private void armHomeDateWatch() {
+        verificationHandler.removeCallbacks(homeDateRollover);
+        java.time.ZoneId seoul = java.time.ZoneId.of("Asia/Seoul");
+        java.time.ZonedDateTime now = java.time.ZonedDateTime.now(seoul);
+        java.time.ZonedDateTime next = now.toLocalDate().plusDays(1).atStartOfDay(seoul);
+        long delay = java.time.Duration.between(now, next).toMillis() + 1000L;
+        if (delay < 1000L) {
+            delay = 1000L;
+        }
+        verificationHandler.postDelayed(homeDateRollover, delay);
+    }
+
+    private boolean noteHomeDate() {
+        java.time.LocalDate today = java.time.LocalDate.now(java.time.ZoneId.of("Asia/Seoul"));
+        boolean changed = homeShownDate != null && !homeShownDate.equals(today);
+        homeShownDate = today;
+        return changed;
+    }
+
+    private void rollHomeToToday() {
+        homeShownDate = java.time.LocalDate.now(java.time.ZoneId.of("Asia/Seoul"));
+        if (!isAlive()) {
+            return;
+        }
+        if (isSignedIn()) {
+            homeArmed = false;
+            ensureHomeLoaded();
+            if (needsServerHome(navigator.currentScreen())) {
+                refresh();
+            }
+            return;
+        }
+        if (navigator.isMainArea() && navigator.currentTab() == ScreenId.HOME) {
+            refresh();
+        }
+    }
+
+    private void finishDeviceRegisterAttempt() {
+        finishAccountRequest();
+        unlockPillboxRegisterButton();
+    }
+
+    private void unlockPillboxRegisterButton() {
+        if (screenContainer == null) {
+            return;
+        }
+        View button = screenContainer.findViewById(R.id.button_pillbox_register_submit);
+        if (button == null) {
+            return;
+        }
+        button.setTag(null);
+        YakyeonTextField serial = screenContainer.findViewById(R.id.field_pillbox_serial);
+        YakyeonTextField secret = screenContainer.findViewById(R.id.field_pillbox_secret);
+        boolean ready = serial != null
+                && secret != null
+                && !serial.getText().trim().isEmpty()
+                && !secret.getText().trim().isEmpty();
+        button.setEnabled(ready);
     }
 
     private String shareText(java.util.List<String> items) {
@@ -3160,28 +4393,30 @@ public class MainActivity extends AppCompatActivity
         HomeRegistration.Prepared prepared = HomeRegistration.prepare(store.draft());
         MedicationRules.SaveBlock times = MedicationRules.validate(store.draft());
         if (times == MedicationRules.SaveBlock.MISSING_TIME || times == MedicationRules.SaveBlock.TOO_CLOSE) {
+            SavedToast.dismiss(this);
             showMessage(getString(R.string.med_time_rule));
             return;
         }
         if (prepared.block != HomeRegistration.Block.NONE || prepared.prescription == null) {
+            SavedToast.dismiss(this);
             showMessage(getString(R.string.med_required));
             return;
         }
+        EnvelopeDraft submitted = store.draft();
         homeWriteBusy = true;
-        showProgress(getString(R.string.home_loading));
         ApiClient.execute(() -> {
             try {
                 PatientGate gate = gatePatients();
                 if (gate.blocked != null) {
-                    runOnUiThread(() -> finishHomeWrite(gate.blocked));
+                    runOnUiThread(() -> failRegistration(gate.blocked));
                     return;
                 }
                 if (!CareContracts.writesAllowed(gate.patient)) {
-                    runOnUiThread(() -> finishHomeWrite(getString(R.string.med_readonly)));
+                    runOnUiThread(() -> failRegistration(getString(R.string.med_readonly)));
                     return;
                 }
                 if (CareContracts.shareWithheld(gate.patient, HomeContracts.MED_INFO)) {
-                    runOnUiThread(() -> finishHomeWrite(getString(R.string.care_share_withheld)));
+                    runOnUiThread(() -> failRegistration(getString(R.string.care_share_withheld)));
                     return;
                 }
                 HomeContracts.CreatedPrescription created = HomeApi.createPrescription(
@@ -3231,26 +4466,29 @@ public class MainActivity extends AppCompatActivity
                         }
                     }
                 }
-                String notice = partial.length() == 0
-                        ? getString(R.string.med_server_saved)
-                        : partial.toString();
                 runOnUiThread(() -> {
                     finishHomeWrite(null);
                     if (!isAlive()) {
                         return;
                     }
-                    YakyeonRepositoryProvider.get().medications().abandonDraft();
-                    popTo(MedScreen.LIST);
-                    if (missingPillbox[0]) {
-                        showUnregisteredPillbox();
-                    } else {
-                        showMessage(notice);
+                    MedicationStore medications = YakyeonRepositoryProvider.get().medications();
+                    if (medications.draft() == submitted) {
+                        medications.abandonDraft();
+                    }
+                    if (!MedScreen.LIST.equals(navigator.currentScreen())) {
+                        showRegisteredMedications();
                     }
                     reloadServerSurfaces();
+                    if (missingPillbox[0]) {
+                        showUnregisteredPillbox();
+                    } else if (partial.length() > 0) {
+                        showMessage(partial.toString());
+                    }
                 });
             } catch (ApiException exception) {
                 runOnUiThread(() -> {
                     finishHomeWrite(null);
+                    SavedToast.dismiss(this);
                     showApiFailure(getString(R.string.med_envelope_title), exception);
                 });
             }
@@ -3357,6 +4595,52 @@ public class MainActivity extends AppCompatActivity
                 runOnUiThread(() -> showApiFailure(getString(R.string.med_alarm_title), exception));
             }
         });
+    }
+
+    @Override
+    public void markUncheckedDose(long scheduledDoseId) {
+        if (!isSignedIn()) {
+            checkHomeDoses();
+            return;
+        }
+        if (!homeWrites) {
+            showMessage(getString(R.string.med_readonly));
+            return;
+        }
+        if (scheduledDoseId <= 0L || homeWriteBusy || !doseChecksInFlight.add(scheduledDoseId)) {
+            return;
+        }
+        runHomeWrite(() -> {
+            try {
+                HomeContracts.Dose dose = HomeApi.markTaken(
+                        getApplicationContext(),
+                        scheduledDoseId,
+                        HomeContracts.takenAt(System.currentTimeMillis())
+                );
+                return serverStatusText(dose.status);
+            } finally {
+                doseChecksInFlight.remove(scheduledDoseId);
+            }
+        });
+    }
+
+    @Override
+    public void checkHomeDoses() {
+        if (isSignedIn()) {
+            if (!homeWrites) {
+                showMessage(getString(R.string.med_readonly));
+                return;
+            }
+            if (homeToday == null
+                    || homeToday.kind != HomeContracts.Section.Kind.READY
+                    || homeToday.value == null) {
+                showMessage(getString(R.string.home_remaining_empty));
+                return;
+            }
+            RecordScreens.checkServerDoses(this, homeToday.value, this);
+            return;
+        }
+        RecordScreens.checkLocalDoses(this, YakyeonRepositoryProvider.get().medications(), this);
     }
 
     @Override
@@ -3551,6 +4835,14 @@ public class MainActivity extends AppCompatActivity
         }
     }
 
+    private void failRegistration(String message) {
+        finishHomeWrite(null);
+        SavedToast.dismiss(this);
+        if (message != null && !message.isEmpty()) {
+            showMessage(message);
+        }
+    }
+
     private void reloadHomeAfterLinkSync() {
         scheduleLoaded = false;
         historyLoaded = false;
@@ -3566,7 +4858,7 @@ public class MainActivity extends AppCompatActivity
         scheduleLoaded = false;
         historyLoaded = false;
         ensureHomeLoaded();
-        if (MedScreen.SCHEDULE.equals(navigator.currentScreen())) {
+        if (showingSchedule()) {
             ensureScheduleLoaded();
         }
         if (MedScreen.HISTORY.equals(navigator.currentScreen())) {
@@ -3639,11 +4931,13 @@ public class MainActivity extends AppCompatActivity
                             null,
                             null,
                             false,
+                            null,
                             null
                     ));
                     return;
                 }
                 SettingsContracts.ManagedPatient patient = gate.patient;
+                String linkedName = guardianPatientName(patient);
                 java.time.LocalDate today = java.time.LocalDate.now(java.time.ZoneId.of("Asia/Seoul"));
                 HomeContracts.Section<HomeContracts.HomeSummary> summary = readSummary(patient);
                 HomeContracts.Section<java.util.List<HomeContracts.Medication>> active = readActive(patient);
@@ -3661,7 +4955,8 @@ public class MainActivity extends AppCompatActivity
                         todayDoses,
                         prescriptions,
                         writes,
-                        patient.patientId
+                        patient.patientId,
+                        linkedName
                 ));
             } catch (ApiException exception) {
                 runOnUiThread(() -> {
@@ -3675,6 +4970,7 @@ public class MainActivity extends AppCompatActivity
                             null,
                             null,
                             false,
+                            null,
                             null
                     );
                     if (exception.endsSession()) {
@@ -3785,7 +5081,8 @@ public class MainActivity extends AppCompatActivity
             HomeContracts.Section<java.util.List<HomeContracts.Dose>> today,
             HomeContracts.Section<java.util.List<HomeContracts.Prescription>> prescriptions,
             boolean writes,
-            Long patientId
+            Long patientId,
+            String linkedPatientName
     ) {
         if (!isAlive() || epoch != homeEpoch) {
             return;
@@ -3799,6 +5096,7 @@ public class MainActivity extends AppCompatActivity
         homePrescriptions = prescriptions;
         homeWrites = writes;
         homePatientId = patientId;
+        homeLinkedPatientName = linkedPatientName;
         if (needsServerHome(navigator.currentScreen())) {
             refresh();
         }
@@ -3853,7 +5151,7 @@ public class MainActivity extends AppCompatActivity
         scheduleView = view;
         scheduleMessage = message;
         scheduleDoses = doses;
-        if (MedScreen.SCHEDULE.equals(navigator.currentScreen())) {
+        if (showingSchedule()) {
             refresh();
         }
     }
@@ -3958,6 +5256,7 @@ public class MainActivity extends AppCompatActivity
         homeToday = null;
         homePrescriptions = null;
         homePatientId = null;
+        homeLinkedPatientName = null;
         homeWrites = false;
         homeWriteBusy = false;
         scheduleLoaded = false;
@@ -4017,6 +5316,74 @@ public class MainActivity extends AppCompatActivity
                 }
             });
         });
+    }
+
+    private void openPushIfPresent(Intent intent) {
+        if (intent == null) {
+            return;
+        }
+        String id = intent.getStringExtra(YakyeonNotifications.EXTRA_NOTIFICATION_ID);
+        if (id == null || id.trim().isEmpty()) {
+            return;
+        }
+        intent.removeExtra(YakyeonNotifications.EXTRA_NOTIFICATION_ID);
+        if (id.trim().equals(openedPushId)) {
+            return;
+        }
+        openedPushId = id.trim();
+        if (!isSignedIn()) {
+            pendingPushId = id.trim();
+            return;
+        }
+        loadPushDetail(id.trim());
+    }
+
+    private void loadPushDetail(String notificationId) {
+        ApiClient.execute(() -> {
+            try {
+                NotificationInbox.Item item = NotificationInbox.find(getApplicationContext(), notificationId);
+                if (item != null) {
+                    try {
+                        NotificationInbox.markRead(getApplicationContext(), item.id);
+                    } catch (ApiException ignored) {
+                        Log.d(FcmRegistrar.TAG, "알림 읽음 처리 실패");
+                    }
+                }
+                runOnUiThread(() -> {
+                    if (!isAlive()) {
+                        return;
+                    }
+                    if (item == null) {
+                        showNotice(getString(R.string.app_name), getString(R.string.push_detail_missing), null);
+                        return;
+                    }
+                    String title = item.title == null || item.title.isEmpty()
+                            ? getString(R.string.app_name)
+                            : item.title;
+                    String body = item.body == null ? "" : item.body;
+                    showNotice(title, body, null);
+                });
+            } catch (ApiException exception) {
+                runOnUiThread(() -> showApiFailure(getString(R.string.app_name), exception));
+            }
+        });
+    }
+
+    private void requestNotificationPermission() {
+        if (Build.VERSION.SDK_INT < 33) {
+            return;
+        }
+        if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
+                == PackageManager.PERMISSION_GRANTED) {
+            Log.d(FcmRegistrar.TAG, "알림 권한 허용됨");
+            return;
+        }
+        if (notificationPermissionRequested || noticePermissionAsked) {
+            return;
+        }
+        notificationPermissionRequested = true;
+        noticePermissionAsked = true;
+        notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS);
     }
 
     private void notifyCatchUp(HomeContracts.Dose dose) {
@@ -4157,6 +5524,8 @@ public class MainActivity extends AppCompatActivity
     private static int menuFor(ScreenId screen) {
         switch (screen) {
             case HOME:
+                return R.id.tab_home;
+            case SCHEDULE:
                 return R.id.tab_home;
             case GRAPH:
                 return R.id.tab_graph;

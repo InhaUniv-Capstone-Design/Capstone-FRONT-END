@@ -90,34 +90,47 @@
         android:text="@string/auth_signup"
         android:textStyle="normal" />
 
-    <com.google.android.material.button.MaterialButton
-        android:id="@+id/button_dev_home"
-        style="@style/Widget.Yakyeon.Button.Secondary"
-        android:layout_width="match_parent"
-        android:layout_height="48dp"
-        android:layout_marginTop="10dp"
-        android:text="@string/auth_dev_home"
-        android:visibility="gone" />
-
-    <com.google.android.material.button.MaterialButton
-        android:id="@+id/button_dev_pillbox_scenario"
-        style="@style/Widget.Yakyeon.Button.Secondary"
-        android:layout_width="match_parent"
-        android:layout_height="48dp"
-        android:layout_marginTop="10dp"
-        android:text="@string/auth_dev_pillbox_scenario"
-        android:visibility="gone" />
-
-    <TextView
-        android:id="@+id/text_dev_home_note"
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="6dp"
+        android:layout_marginTop="4dp"
         android:gravity="center"
-        android:text="@string/auth_dev_home_note"
-        android:textColor="@color/yakyeon_muted"
-        android:textSize="11sp"
-        android:visibility="gone" />
+        android:orientation="horizontal">
+
+        <TextView
+            android:id="@+id/tab_find_id"
+            android:layout_width="wrap_content"
+            android:layout_height="48dp"
+            android:background="?attr/selectableItemBackground"
+            android:clickable="true"
+            android:focusable="true"
+            android:gravity="center"
+            android:paddingStart="14dp"
+            android:paddingEnd="14dp"
+            android:text="@string/auth_find_id"
+            android:textColor="@color/yakyeon_brand"
+            android:textSize="13sp" />
+
+        <View
+            android:layout_width="1dp"
+            android:layout_height="12dp"
+            android:background="@color/yakyeon_line"
+            android:importantForAccessibility="no" />
+
+        <TextView
+            android:id="@+id/tab_find_password"
+            android:layout_width="wrap_content"
+            android:layout_height="48dp"
+            android:background="?attr/selectableItemBackground"
+            android:clickable="true"
+            android:focusable="true"
+            android:gravity="center"
+            android:paddingStart="14dp"
+            android:paddingEnd="14dp"
+            android:text="@string/auth_find_password"
+            android:textColor="@color/yakyeon_brand"
+            android:textSize="13sp" />
+    </LinearLayout>
 
     <TextView
         android:layout_width="match_parent"

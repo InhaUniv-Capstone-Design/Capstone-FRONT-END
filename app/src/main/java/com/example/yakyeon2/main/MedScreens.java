@@ -60,6 +60,8 @@ public final class MedScreens {
 
         void popTo(String key);
 
+        void showRegisteredMedications();
+
         void refresh();
 
         boolean usesServerRecords();
@@ -568,6 +570,7 @@ public final class MedScreens {
                     break;
             }
             if (prepared.block == HomeRegistration.Block.NONE) {
+                host.showRegisteredMedications();
                 host.submitServerRegistration();
                 return;
             }
@@ -576,8 +579,7 @@ public final class MedScreens {
         }
         switch (store.commit(zone())) {
             case OK:
-                host.popTo(MedScreen.LIST);
-                host.showMessage(activity.getString(R.string.med_local_saved));
+                host.showRegisteredMedications();
                 break;
             case NOT_CONFIRMED:
                 showNeedConfirm(activity);

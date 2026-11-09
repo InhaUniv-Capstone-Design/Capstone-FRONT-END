@@ -8,6 +8,10 @@ import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Locale;
 
 public final class AuthContracts {
 
@@ -96,6 +100,37 @@ public final class AuthContracts {
         }
     }
 
+    /** Account returned by find-id. The login id is shown; the type selects the label. */
+    public static final class FoundAccount {
+        public final String loginId;
+        public final String accountType;
+
+        private FoundAccount(String loginId, String accountType) {
+            this.loginId = loginId;
+            this.accountType = accountType;
+        }
+    }
+
+    public static FoundAccount rememberedAccount(String loginId, String accountType) {
+        return new FoundAccount(loginId, accountType);
+    }
+
+    /**
+     * Rebuilds a verification the activity already held, after a configuration change.
+     * {@code expiresIn} is unused once the deadline is stored separately.
+     */
+    public static PhoneVerification remembered(long verificationId, String messageText, String messageTo) {
+        if (verificationId <= 0L) {
+            return null;
+        }
+        if (messageText == null || messageTo == null
+                || !messageText.matches("\\d{6}")
+                || !messageTo.matches("\\d+")) {
+            return new PhoneVerification(verificationId, 1L, null, null);
+        }
+        return new PhoneVerification(verificationId, 1L, messageText, messageTo);
+    }
+
     public static String displayMessageTo(String digits) {
         if (digits != null && digits.length() == 8) {
             return digits.substring(0, 4) + " " + digits.substring(4);
@@ -143,6 +178,41 @@ public final class AuthContracts {
 
     public static boolean isVerificationCode(String code) {
         return code != null && code.matches("\\d{6}");
+    }
+
+    /**
+     * Confirm calls the server should allow for one code, including {@code verified: false}.
+     * The next call after this many is {@code VERIFICATION_ATTEMPTS_EXCEEDED}.
+     * 150 automatic checks at 2 seconds cover the 5-minute code, and the rest cover signup.
+     */
+    public static final int PHONE_CODE_ATTEMPT_LIMIT = 160;
+
+    /**
+     * Automatic outbound checks. 5 minutes at {@link #OUTBOUND_CONFIRM_GAP_MILLIS}
+     * is 150 tries. Further tries stay available for the signup submit.
+     */
+    public static final int OUTBOUND_AUTO_CONFIRM_LIMIT = 150;
+
+    /** How often the app asks whether the outbound text has arrived. */
+    public static final long OUTBOUND_CONFIRM_GAP_MILLIS = 2_000L;
+
+    /** Deadline for a phone code. {@code expiresInSeconds} is the server {@code expires_in}. */
+    public static long verificationDeadline(long startedAtMillis, long expiresInSeconds) {
+        return startedAtMillis + expiresInSeconds * 1000L;
+    }
+
+    /** Whole seconds still shown on the countdown. Zero means the code has expired. */
+    public static long remainingCountdownSeconds(long deadlineMillis, long nowMillis) {
+        long remaining = deadlineMillis - nowMillis;
+        if (remaining <= 0L) {
+            return 0L;
+        }
+        return (remaining + 999L) / 1000L;
+    }
+
+    public static String countdownText(long remainingSeconds) {
+        long seconds = Math.max(0L, remainingSeconds);
+        return String.format(Locale.KOREA, "%d:%02d", seconds / 60L, seconds % 60L);
     }
 
     public static PreparedTerms readTerms(JSONArray array) throws ApiException {
@@ -261,8 +331,8 @@ public final class AuthContracts {
             return new PhoneConfirm(false, null, null);
         }
         String token = JsonReads.text(response, "verification_token");
-        long expires = JsonReads.number(response, "token_expires_in");
-        if (expires < 1L) {
+        Long expires = JsonReads.optionalNumber(response, "token_expires_in");
+        if (expires != null && expires < 1L) {
             throw ApiException.response(200);
         }
         return new PhoneConfirm(true, token, expires);
@@ -319,6 +389,81 @@ public final class AuthContracts {
         return JsonReads.positiveId(JsonReads.object(response), "user_id");
     }
 
+    public static JSONObject findIdBody(
+            String name,
+            String phone,
+            long verificationId,
+            String verificationToken
+    ) throws ApiException {
+        if (name == null || name.isEmpty() || phone == null || phone.isEmpty()
+                || verificationId <= 0L
+                || verificationToken == null || verificationToken.isEmpty()) {
+            throw ApiException.local();
+        }
+        JSONObject body = new JSONObject();
+        try {
+            body.put("name", name);
+            body.put("phone", phone);
+            body.put("verification_id", verificationId);
+            body.put("verification_token", verificationToken);
+        } catch (JSONException exception) {
+            throw ApiException.local();
+        }
+        return body;
+    }
+
+    public static List<FoundAccount> readFoundAccounts(JSONObject response) throws ApiException {
+        JsonReads.object(response);
+        if (!response.has("accounts") || response.isNull("accounts")) {
+            throw ApiException.response(200);
+        }
+        JSONArray accounts = response.optJSONArray("accounts");
+        if (accounts == null) {
+            throw ApiException.response(200);
+        }
+        List<FoundAccount> found = new ArrayList<>();
+        for (int index = 0; index < accounts.length(); index++) {
+            JSONObject item = accounts.optJSONObject(index);
+            if (item == null) {
+                throw ApiException.response(200);
+            }
+            found.add(new FoundAccount(
+                    JsonReads.text(item, "login_id"),
+                    JsonReads.text(item, "account_type")
+            ));
+        }
+        return Collections.unmodifiableList(found);
+    }
+
+    public static JSONObject passwordResetBody(
+            String loginId,
+            String phone,
+            long verificationId,
+            String verificationToken,
+            String newPassword,
+            String newPasswordConfirm
+    ) throws ApiException {
+        if (loginId == null || loginId.isEmpty() || phone == null || phone.isEmpty()
+                || verificationId <= 0L
+                || verificationToken == null || verificationToken.isEmpty()
+                || newPassword == null || newPassword.isEmpty()
+                || newPasswordConfirm == null || newPasswordConfirm.isEmpty()) {
+            throw ApiException.local();
+        }
+        JSONObject body = new JSONObject();
+        try {
+            body.put("login_id", loginId);
+            body.put("phone", phone);
+            body.put("verification_id", verificationId);
+            body.put("verification_token", verificationToken);
+            body.put("new_password", newPassword);
+            body.put("new_password_confirm", newPasswordConfirm);
+        } catch (JSONException exception) {
+            throw ApiException.local();
+        }
+        return body;
+    }
+
     public static JSONObject pushTokenBody(String fcmToken) throws ApiException {
         if (fcmToken == null || fcmToken.isEmpty()) {
             throw ApiException.local();
@@ -326,6 +471,18 @@ public final class AuthContracts {
         JSONObject body = new JSONObject();
         try {
             body.put("fcm_token", fcmToken);
+        } catch (JSONException exception) {
+            throw ApiException.local();
+        }
+        return body;
+    }
+
+    /** Register body. Delete keeps {@link #pushTokenBody(String)} and does not send the flag. */
+    public static JSONObject pushRegistrationBody(String fcmToken, boolean notificationPermitted)
+            throws ApiException {
+        JSONObject body = pushTokenBody(fcmToken);
+        try {
+            body.put("notification_permitted", notificationPermitted);
         } catch (JSONException exception) {
             throw ApiException.local();
         }

@@ -6,11 +6,15 @@ import android.content.Intent;
 import android.content.res.ColorStateList;
 import android.graphics.Color;
 import android.graphics.PorterDuff;
+import android.graphics.Rect;
 import android.graphics.Typeface;
 import android.graphics.drawable.ColorDrawable;
 import android.os.Build;
+import android.text.Editable;
 import android.text.InputFilter;
 import android.text.InputType;
+import android.text.TextWatcher;
+import android.view.inputmethod.EditorInfo;
 import android.util.DisplayMetrics;
 import android.util.TypedValue;
 import android.view.Gravity;
@@ -37,10 +41,13 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.SwitchCompat;
 import androidx.core.app.NotificationManagerCompat;
 
+import com.google.android.material.button.MaterialButton;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
+import com.google.android.material.textfield.TextInputLayout;
 
 import com.example.yakyeon2.R;
 import com.example.yakyeon2.ui.ConfirmDialog;
+import com.example.yakyeon2.ui.YakyeonTextField;
 import com.example.yakyeon2.data.AccountRoles;
 import com.example.yakyeon2.data.ClinicalShareOptions;
 import com.example.yakyeon2.data.DrugRelations;
@@ -116,6 +123,10 @@ public final class SettingsScreens {
         void confirmDeviceConsent();
 
         void registerDevice(String serialNo, String secret);
+
+        String deviceSerialDraft();
+
+        String deviceSecretDraft();
 
         void unlinkCareLink(long linkId);
     }
@@ -220,7 +231,7 @@ public final class SettingsScreens {
             return activity.getString(R.string.pillbox_settings);
         }
         if (PILLBOX_SEARCH.equals(key)) {
-            return activity.getString(R.string.pillbox_search);
+            return activity.getString(R.string.pillbox_register_title);
         }
         if (PILLBOX_CONSENT.equals(key)) {
             return activity.getString(R.string.settings_device_title);
@@ -273,7 +284,7 @@ public final class SettingsScreens {
             return pillbox(activity, store, host, account);
         }
         if (PILLBOX_SEARCH.equals(key)) {
-            return pillboxSearch(activity, host, account);
+            return pillboxSearch(activity, account);
         }
         if (PILLBOX_CONSENT.equals(key)) {
             return pillboxConsent(activity, store, host, account);
@@ -931,20 +942,40 @@ public final class SettingsScreens {
         return box;
     }
 
-    private static EditText credentialField(AppCompatActivity activity, int hint, boolean secret) {
-        EditText field = new EditText(activity);
-        field.setHint(hint);
-        field.setSingleLine(true);
-        field.setInputType(secret
-                ? InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD
-                : InputType.TYPE_CLASS_TEXT);
-        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-        );
-        params.topMargin = dp(activity, 12);
-        field.setLayoutParams(params);
-        return field;
+    private static void prepareRegisterField(YakyeonTextField field, String hint, boolean secret) {
+        field.setHintEnabled(false);
+        field.getEditText().setHint(hint);
+        field.getEditText().setSingleLine(true);
+        field.getEditText().setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO);
+        if (!secret) {
+            field.getEditText().setInputType(InputType.TYPE_CLASS_TEXT);
+            return;
+        }
+        field.getEditText().setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        field.setEndIconMode(TextInputLayout.END_ICON_PASSWORD_TOGGLE);
+        field.setEndIconContentDescription(R.string.auth_password_visibility);
+        field.setEndIconTintList(ColorStateList.valueOf(field.getContext().getColor(R.color.yakyeon_muted)));
+    }
+
+    private static boolean registerReady(YakyeonTextField serial, YakyeonTextField secret) {
+        return !serial.getText().trim().isEmpty() && !secret.getText().trim().isEmpty();
+    }
+
+    private static void keepRegisterVisible(View field, View button) {
+        field.setOnFocusChangeListener((focused, hasFocus) -> {
+            if (!hasFocus) {
+                return;
+            }
+            focused.post(() -> {
+                Rect fieldRect = new Rect(0, 0, focused.getWidth(), focused.getHeight());
+                fieldRect.bottom += button.getHeight();
+                focused.requestRectangleOnScreen(fieldRect, true);
+                button.requestRectangleOnScreen(
+                        new Rect(0, 0, button.getWidth(), button.getHeight()),
+                        false
+                );
+            });
+        });
     }
 
     private static int dp(AppCompatActivity activity, int value) {
@@ -1004,37 +1035,55 @@ public final class SettingsScreens {
 
     private static View pillboxSearch(
             AppCompatActivity activity,
-            MainScreens.Host host,
             AccountHost account
     ) {
         View root = LayoutInflater.from(activity).inflate(R.layout.screen_pillbox_search, null);
-        if (account.isSignedIn()) {
-            root.findViewById(R.id.row_found_pillbox).setVisibility(View.GONE);
-            ((TextView) root.findViewById(R.id.text_pillbox_search_count))
-                    .setText(R.string.pillbox_search_found_none);
-            ((TextView) root.findViewById(R.id.text_pillbox_search_pick))
-                    .setText(R.string.pillbox_search_signed_in);
-            ViewGroup column = (ViewGroup) ((ViewGroup) root).getChildAt(0);
-            EditText serial = credentialField(activity, R.string.pillbox_serial_hint, false);
-            EditText secret = credentialField(activity, R.string.pillbox_secret_hint, true);
-            TextView register = button(activity, R.string.pillbox_register, () -> {
-                String serialValue = serial.getText().toString();
-                String secretValue = secret.getText().toString();
-                secret.setText("");
-                account.registerDevice(serialValue, secretValue);
-            });
-            int again = column.indexOfChild(root.findViewById(R.id.button_pillbox_search_again));
-            column.addView(serial, again);
-            column.addView(secret, again + 1);
-            column.addView(register, again + 2);
-            root.findViewById(R.id.button_pillbox_search_again).setOnClickListener(v ->
-                    host.showMessage(activity.getString(R.string.pillbox_register_need_both))
-            );
-            return root;
-        }
-        View.OnClickListener openConsent = v -> host.openDetail(PILLBOX_CONSENT);
-        root.findViewById(R.id.row_found_pillbox).setOnClickListener(openConsent);
-        root.findViewById(R.id.button_pillbox_search_again).setOnClickListener(v -> host.refresh());
+        YakyeonTextField serial = root.findViewById(R.id.field_pillbox_serial);
+        YakyeonTextField secret = root.findViewById(R.id.field_pillbox_secret);
+        MaterialButton register = root.findViewById(R.id.button_pillbox_register_submit);
+        prepareRegisterField(serial, activity.getString(R.string.pillbox_serial_hint), false);
+        prepareRegisterField(secret, activity.getString(R.string.pillbox_secret_hint), true);
+        serial.setText(account.deviceSerialDraft());
+        secret.setText(account.deviceSecretDraft());
+        serial.getEditText().setImeOptions(EditorInfo.IME_ACTION_NEXT);
+        secret.getEditText().setImeOptions(EditorInfo.IME_ACTION_DONE);
+        serial.getEditText().setOnEditorActionListener((view, actionId, event) -> {
+            if (actionId == EditorInfo.IME_ACTION_NEXT) {
+                secret.getEditText().requestFocus();
+                return true;
+            }
+            return false;
+        });
+        TextWatcher watcher = new TextWatcher() {
+            @Override
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) {
+            }
+
+            @Override
+            public void onTextChanged(CharSequence s, int start, int before, int count) {
+            }
+
+            @Override
+            public void afterTextChanged(Editable s) {
+                if (Boolean.TRUE.equals(register.getTag())) {
+                    return;
+                }
+                register.setEnabled(registerReady(serial, secret));
+            }
+        };
+        serial.getEditText().addTextChangedListener(watcher);
+        secret.getEditText().addTextChangedListener(watcher);
+        register.setEnabled(registerReady(serial, secret));
+        keepRegisterVisible(serial.getEditText(), register);
+        keepRegisterVisible(secret.getEditText(), register);
+        register.setOnClickListener(v -> {
+            if (Boolean.TRUE.equals(register.getTag()) || !registerReady(serial, secret)) {
+                return;
+            }
+            register.setTag(Boolean.TRUE);
+            register.setEnabled(false);
+            account.registerDevice(serial.getText(), secret.getText());
+        });
         return root;
     }
 
@@ -1845,7 +1894,7 @@ public final class SettingsScreens {
                 if (line.canUnlink) {
                     card.addView(hairline(activity));
                     card.addView(actionRow(activity, R.drawable.ic_settings_unlink, R.string.care_link_unlink, () ->
-                            account.unlinkCareLink(line.linkId)));
+                            confirmUnlink(activity, line.linkId, account)));
                 }
             }
         }
@@ -2012,6 +2061,26 @@ public final class SettingsScreens {
             account.submitPassword(currentPassword, newPassword, newPasswordConfirm);
         }));
         dialog.show();
+    }
+
+    private static void confirmUnlink(AppCompatActivity activity, long linkId, AccountHost account) {
+        ConfirmDialog.show(
+                activity,
+                activity.getString(R.string.care_unlink_confirm),
+                "",
+                activity.getString(R.string.care_unlink_action),
+                activity.getString(R.string.action_cancel),
+                new ConfirmDialog.Callback() {
+                    @Override
+                    public void onConfirm() {
+                        account.unlinkCareLink(linkId);
+                    }
+
+                    @Override
+                    public void onCancel() {
+                    }
+                }
+        );
     }
 
     private static void confirmLogout(AppCompatActivity activity, AccountHost account) {
