@@ -1,5 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <string name="auth_manual_check">로그인 없이 기능 점검</string>
-    <string name="auth_manual_check_note">개발 빌드 전용. 서버에 로그인하지 않고 이 기기의 화면만 엽니다.</string>
-</resources>

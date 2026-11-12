@@ -153,12 +153,6 @@ public final class MainScreens {
                 zone,
                 host
         );
-        if (debuggable) {
-            root.findViewById(R.id.text_home_greeting).setOnLongClickListener(v -> {
-                host.openDetail(DEV_TOOLS);
-                return true;
-            });
-        }
         return root;
     }
 
@@ -190,12 +184,6 @@ public final class MainScreens {
         root.findViewById(R.id.button_add_med).setOnClickListener(openList);
         root.findViewById(R.id.button_register_home).setOnClickListener(v -> host.registerMedication());
         root.findViewById(R.id.button_home_history).setOnClickListener(v -> host.openDetail(MedScreen.SCHEDULE));
-        if (debuggable) {
-            root.findViewById(R.id.text_home_greeting).setOnLongClickListener(v -> {
-                host.openDetail(DEV_TOOLS);
-                return true;
-            });
-        }
         if (awaitingPatientLink) {
             root.findViewById(R.id.text_home_subtitle).setVisibility(View.GONE);
             root.findViewById(R.id.card_today_entry).setVisibility(View.GONE);
