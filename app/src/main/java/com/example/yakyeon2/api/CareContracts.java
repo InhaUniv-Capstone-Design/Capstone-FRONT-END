@@ -219,6 +219,34 @@ public final class CareContracts {
         }
     }
 
+    public static final class Assignment {
+        public final long mappingId;
+        public final long deviceId;
+        public final long compartmentNo;
+        public final long prescriptionId;
+        public final String status;
+        public final Long loadedCount;
+        public final Long remainingCount;
+
+        private Assignment(
+                long mappingId,
+                long deviceId,
+                long compartmentNo,
+                long prescriptionId,
+                String status,
+                Long loadedCount,
+                Long remainingCount
+        ) {
+            this.mappingId = mappingId;
+            this.deviceId = deviceId;
+            this.compartmentNo = compartmentNo;
+            this.prescriptionId = prescriptionId;
+            this.status = status;
+            this.loadedCount = loadedCount;
+            this.remainingCount = remainingCount;
+        }
+    }
+
     public static final class GraphBundle {
         public final Summary summary;
         public final GraphDocumentModel graph;
@@ -364,6 +392,10 @@ public final class CareContracts {
         return count >= 1L && count <= 100L;
     }
 
+    public static boolean loadedCountAllowed(long count) {
+        return count >= 1L && count <= 1500L;
+    }
+
     public static Summary readSummary(JSONObject response) throws ApiException {
         JsonReads.object(response);
         return new Summary(
@@ -488,10 +520,26 @@ public final class CareContracts {
     }
 
     public static JSONObject compartmentBody(long compartmentNo) throws ApiException {
+        return compartmentBody(compartmentNo, null);
+    }
+
+    public static JSONObject compartmentBody(long compartmentNo, Long loadedCount) throws ApiException {
         if (!compartmentNoAllowed(compartmentNo)) {
             throw ApiException.local();
         }
-        return singleNumber("compartment_no", compartmentNo);
+        if (loadedCount != null && !loadedCountAllowed(loadedCount)) {
+            throw ApiException.local();
+        }
+        JSONObject body = singleNumber("compartment_no", compartmentNo);
+        if (loadedCount == null) {
+            return body;
+        }
+        try {
+            body.put("loaded_count", loadedCount);
+        } catch (JSONException exception) {
+            throw ApiException.local();
+        }
+        return body;
     }
 
     public static JSONObject loadBody(long loadedCount) throws ApiException {
@@ -519,6 +567,183 @@ public final class CareContracts {
             }
         }
         return count;
+    }
+
+    public static Assignment readAssignment(JSONObject response) throws ApiException {
+        JsonReads.object(response);
+        long compartmentNo = JsonReads.number(response, "compartment_no");
+        if (!compartmentNoAllowed(compartmentNo)) {
+            throw ApiException.response(201);
+        }
+        String status = JsonReads.text(response, "status");
+        if (!ACTIVE.equals(status) && !PENDING_LOAD.equals(status)) {
+            throw ApiException.response(201);
+        }
+        return new Assignment(
+                JsonReads.positiveId(response, "mapping_id"),
+                JsonReads.positiveId(response, "device_id"),
+                compartmentNo,
+                JsonReads.positiveId(response, "prescription_id"),
+                status,
+                pouchCount(response, "loaded_count"),
+                pouchCount(response, "remaining_count")
+        );
+    }
+
+    public static boolean assignmentCompleted(Assignment assignment, long prescriptionId, long compartmentNo) {
+        return assignment != null
+                && ACTIVE.equals(assignment.status)
+                && assignment.prescriptionId == prescriptionId
+                && assignment.compartmentNo == compartmentNo;
+    }
+
+    public static Pillbox applyActiveAssignment(
+            Pillbox pillbox,
+            Assignment assignment,
+            Long releasedCompartmentNo
+    ) {
+        if (pillbox == null || assignment == null || !ACTIVE.equals(assignment.status)) {
+            return pillbox;
+        }
+        List<Compartment> rows = new ArrayList<>();
+        boolean found = false;
+        for (Compartment compartment : pillbox.compartments) {
+            boolean target = compartment.compartmentNo == assignment.compartmentNo;
+            boolean released = releasedCompartmentNo != null
+                    && compartment.compartmentNo == releasedCompartmentNo
+                    && !target;
+            boolean stalePrescription = !target
+                    && compartment.prescriptionId != null
+                    && compartment.prescriptionId == assignment.prescriptionId;
+            if (target) {
+                found = true;
+                rows.add(assignedCompartment(compartment, assignment));
+            } else if (released || stalePrescription) {
+                rows.add(emptyCompartment(compartment));
+            } else {
+                rows.add(compartment);
+            }
+        }
+        if (!found) {
+            rows.add(new Compartment(
+                    assignment.compartmentNo,
+                    assignment.status,
+                    assignment.mappingId,
+                    assignment.prescriptionId,
+                    null,
+                    Collections.emptyList(),
+                    assignment.loadedCount,
+                    assignment.remainingCount,
+                    false,
+                    null,
+                    null,
+                    null
+            ));
+            Collections.sort(rows, (left, right) -> Long.compare(left.compartmentNo, right.compartmentNo));
+        }
+        return new Pillbox(pillbox.device, rows);
+    }
+
+    public static boolean assignmentAmbiguous(Pillbox pillbox, long prescriptionId) {
+        if (pillbox == null || prescriptionId <= 0L) {
+            return false;
+        }
+        int matches = 0;
+        for (Compartment compartment : pillbox.compartments) {
+            if (compartment.prescriptionId != null && compartment.prescriptionId == prescriptionId) {
+                matches++;
+            }
+        }
+        return matches > 1;
+    }
+
+    public static Compartment compartmentForPrescription(Pillbox pillbox, long prescriptionId) {
+        if (pillbox == null || prescriptionId <= 0L || assignmentAmbiguous(pillbox, prescriptionId)) {
+            return null;
+        }
+        for (Compartment compartment : pillbox.compartments) {
+            if (compartment.prescriptionId != null && compartment.prescriptionId == prescriptionId) {
+                return compartment;
+            }
+        }
+        return null;
+    }
+
+    public static Compartment compartmentByNo(Pillbox pillbox, long compartmentNo) {
+        if (pillbox == null) {
+            return null;
+        }
+        for (Compartment compartment : pillbox.compartments) {
+            if (compartment.compartmentNo == compartmentNo) {
+                return compartment;
+            }
+        }
+        return null;
+    }
+
+    public static Compartment compartmentForMapping(Pillbox pillbox, long mappingId) {
+        if (pillbox == null || mappingId <= 0L) {
+            return null;
+        }
+        for (Compartment compartment : pillbox.compartments) {
+            if (compartment.mappingId != null && compartment.mappingId == mappingId) {
+                return compartment;
+            }
+        }
+        return null;
+    }
+
+    public static boolean canRelease(Compartment compartment) {
+        if (compartment == null || compartment.mappingId == null || compartment.mappingId <= 0L) {
+            return false;
+        }
+        return ACTIVE.equals(compartment.state) || PENDING_LOAD.equals(compartment.state);
+    }
+
+    /**
+     * Drops one mapping and marks that compartment empty. Other compartments stay as they were.
+     * Used only after a successful release when a fresh pillbox read is unavailable.
+     */
+    public static Pillbox clearMapping(Pillbox pillbox, long mappingId) {
+        if (pillbox == null || mappingId <= 0L) {
+            return pillbox;
+        }
+        List<Compartment> rows = new ArrayList<>();
+        boolean changed = false;
+        for (Compartment compartment : pillbox.compartments) {
+            if (compartment.mappingId != null && compartment.mappingId == mappingId) {
+                rows.add(emptyCompartment(compartment));
+                changed = true;
+            } else {
+                rows.add(compartment);
+            }
+        }
+        if (!changed) {
+            return pillbox;
+        }
+        return new Pillbox(pillbox.device, rows);
+    }
+
+    public static boolean hasEmptyCompartment(Pillbox pillbox) {
+        if (pillbox == null) {
+            return false;
+        }
+        for (Compartment compartment : pillbox.compartments) {
+            if (EMPTY.equals(compartment.state)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public static boolean compartmentSelectable(Compartment compartment, long prescriptionId) {
+        if (compartment == null || !compartmentNoAllowed(compartment.compartmentNo)) {
+            return false;
+        }
+        if (EMPTY.equals(compartment.state)) {
+            return true;
+        }
+        return compartment.prescriptionId != null && compartment.prescriptionId == prescriptionId;
     }
 
     private static Compartment readCompartment(JSONObject item) throws ApiException {
@@ -684,6 +909,51 @@ public final class CareContracts {
         }
         builder.append('"');
         return builder.toString();
+    }
+
+    private static Long pouchCount(JSONObject response, String key) throws ApiException {
+        Long value = JsonReads.optionalNumber(response, key);
+        if (value != null && value < 0L) {
+            throw ApiException.response(201);
+        }
+        return value;
+    }
+
+    private static Compartment assignedCompartment(Compartment source, Assignment assignment) {
+        return new Compartment(
+                source.compartmentNo,
+                assignment.status,
+                assignment.mappingId,
+                assignment.prescriptionId,
+                source.hospitalName,
+                source.medications,
+                assignment.loadedCount != null ? assignment.loadedCount : source.loadedCount,
+                assignment.remainingCount != null ? assignment.remainingCount : source.remainingCount,
+                source.lowStock,
+                source.pouchPresent,
+                source.alertActive,
+                source.attention
+        );
+    }
+
+    private static Compartment emptyCompartment(Compartment source) {
+        if (EMPTY.equals(source.state)) {
+            return source;
+        }
+        return new Compartment(
+                source.compartmentNo,
+                EMPTY,
+                null,
+                null,
+                null,
+                Collections.emptyList(),
+                null,
+                null,
+                false,
+                null,
+                null,
+                null
+        );
     }
 
     private static JSONObject singleNumber(String key, long value) throws ApiException {

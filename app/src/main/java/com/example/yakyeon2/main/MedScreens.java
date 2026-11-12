@@ -20,6 +20,7 @@ import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 
 import com.example.yakyeon2.R;
+import com.example.yakyeon2.api.CareContracts;
 import com.example.yakyeon2.api.HomeContracts;
 import com.example.yakyeon2.api.HomeRegistration;
 import com.example.yakyeon2.data.ClockTime;
@@ -27,6 +28,7 @@ import com.example.yakyeon2.data.DoseAmount;
 import com.example.yakyeon2.data.DoseRound;
 import com.example.yakyeon2.data.DoseTiming;
 import com.example.yakyeon2.data.EnvelopeDraft;
+import com.example.yakyeon2.data.MealTimingText;
 import com.example.yakyeon2.data.MedicationRules;
 import com.example.yakyeon2.data.MedicationStore;
 import com.example.yakyeon2.data.MedicineDraft;
@@ -81,6 +83,12 @@ public final class MedScreens {
         void deleteServerMedication(long medicationId);
 
         void openServerSchedule(long prescriptionId);
+
+        void openServerCompartment(long prescriptionId);
+
+        void chooseServerCompartment(int compartmentNo);
+
+        void confirmServerCompartment();
 
         void recordServerDose(long doseId, long takenAtMillis);
 
@@ -343,9 +351,13 @@ public final class MedScreens {
         }
         bindSlotBundle(activity, root, hospital, names, rounds);
         TextView note = root.findViewById(R.id.text_slot_note);
-        note.setText(activity.getString(R.string.med_slot_no_duplicate)
-                + "\n"
-                + activity.getString(R.string.med_slot_device_separate));
+        if (host.usesServerRecords()) {
+            note.setText(assignGuidance(activity));
+        } else {
+            note.setText(activity.getString(R.string.med_slot_no_duplicate)
+                    + "\n"
+                    + activity.getString(R.string.med_slot_device_separate));
+        }
         LinearLayout list = root.findViewById(R.id.slot_list);
         boolean serverDraft = host.usesServerRecords();
         for (int index = 0; index < (serverDraft ? 3 : session.slotCount()); index++) {
@@ -358,18 +370,24 @@ public final class MedScreens {
                     host.showMessage(activity.getString(R.string.pillbox_slot_full));
                     return;
                 }
-                draft.setSlotIndex(slotIndex);
+                if (draft.getSlotIndex() != null && draft.getSlotIndex() == slotIndex) {
+                    draft.setSlotIndex(null);
+                } else {
+                    draft.setSlotIndex(slotIndex);
+                }
                 host.refresh();
             });
             list.addView(row);
         }
         root.findViewById(R.id.button_slot_without).setVisibility(View.GONE);
         root.findViewById(R.id.button_slot_done).setOnClickListener(v -> {
-            if (draft == null || draft.getSlotIndex() == null) {
+            if (draft == null) {
                 host.showMessage(activity.getString(R.string.med_slot_need));
                 return;
             }
-            if (!host.usesServerRecords() && session.isSlotOccupied(draft.getSlotIndex())) {
+            if (draft.getSlotIndex() != null
+                    && !host.usesServerRecords()
+                    && session.isSlotOccupied(draft.getSlotIndex())) {
                 host.showMessage(activity.getString(R.string.pillbox_slot_full));
                 return;
             }
@@ -750,7 +768,7 @@ public final class MedScreens {
             View row = LayoutInflater.from(activity).inflate(R.layout.item_med_list_medicine, medicines, false);
             ((TextView) row.findViewById(R.id.text_medicine_name)).setText(displayName(activity, medicine.getName()));
             ((TextView) row.findViewById(R.id.text_medicine_frequency)).setText(
-                    activity.getString(R.string.med_frequency, medicine.rounds().size())
+                    frequencyLine(activity, medicine.rounds().size(), timingsText(activity, medicine.timings()))
             );
             if (!envelope.isStopped()) {
                 row.setOnLongClickListener(v -> {
@@ -795,7 +813,7 @@ public final class MedScreens {
         TextView name = row.findViewById(R.id.text_row_name);
         TextView frequency = row.findViewById(R.id.text_row_frequency);
         name.setText(displayName(activity, medicine.getName()));
-        frequency.setText(activity.getString(R.string.med_frequency, medicine.rounds().size()));
+        frequency.setText(frequencyLine(activity, medicine.rounds().size(), timingsText(activity, medicine)));
         row.findViewById(R.id.text_row_chevron).setVisibility(expanded ? View.GONE : View.VISIBLE);
         View panel = row.findViewById(R.id.panel_expand);
         panel.setVisibility(expanded ? View.VISIBLE : View.GONE);
@@ -819,8 +837,8 @@ public final class MedScreens {
         nameValue.setOnClickListener(v -> pickMedicineName(activity, medicine, host, host::refresh));
         bindAmount(activity, row, medicine);
         CheckBox timingBed = row.findViewById(R.id.check_timing_bed);
-        bindTiming(row.findViewById(R.id.check_timing_before), medicine, DoseTiming.BEFORE_MEAL);
-        bindTiming(row.findViewById(R.id.check_timing_after), medicine, DoseTiming.AFTER_MEAL_30);
+        bindTiming(row, row.findViewById(R.id.check_timing_before), medicine, DoseTiming.BEFORE_MEAL);
+        bindTiming(row, row.findViewById(R.id.check_timing_after), medicine, DoseTiming.AFTER_MEAL_30);
         bindRound(row.findViewById(R.id.check_morning), medicine, DoseRound.MORNING, row, activity);
         bindRound(row.findViewById(R.id.check_lunch), medicine, DoseRound.LUNCH, row, activity);
         bindRound(row.findViewById(R.id.check_evening), medicine, DoseRound.EVENING, row, activity);
@@ -972,9 +990,9 @@ public final class MedScreens {
         bindRound(root.findViewById(R.id.check_bedtime), medicine, DoseRound.BEDTIME, root, activity);
         updateFrequency(activity, root, medicine);
         android.widget.Button timing = root.findViewById(R.id.button_timing);
-        timing.setText(timingsText(activity, medicine.timings()));
+        timing.setText(timingsText(activity, medicine));
         timing.setOnClickListener(v -> pickTimings(activity, medicine, () ->
-                timing.setText(timingsText(activity, medicine.timings()))));
+                timing.setText(timingsText(activity, medicine))));
         android.widget.Button start = root.findViewById(R.id.button_start);
         android.widget.Button end = root.findViewById(R.id.button_end);
         start.setText(dateLabel(activity, activity.getString(R.string.med_period_start), medicine.getStart()));
@@ -1038,7 +1056,7 @@ public final class MedScreens {
         Runnable paint = () -> {
             name.setText(displayName(activity, medicine.getName()));
             amount.setText(draftAmountLabel(activity, medicine));
-            timing.setText(timingsText(activity, medicine.timings()));
+            timing.setText(timingsText(activity, medicine));
             period.setText(periodLabel(activity, medicine));
             updateFrequency(activity, root, medicine);
         };
@@ -1140,9 +1158,9 @@ public final class MedScreens {
         });
     }
 
-    private static void bindTiming(CheckBox box, MedicineDraft medicine, DoseTiming timing) {
+    private static void bindTiming(View row, CheckBox box, MedicineDraft medicine, DoseTiming timing) {
         box.setOnCheckedChangeListener(null);
-        box.setChecked(medicine.timings().contains(timing));
+        box.setChecked(timingSelected(medicine, timing));
         box.setOnCheckedChangeListener((button, checked) -> {
             medicine.clearMealRelation();
             if (checked) {
@@ -1150,7 +1168,28 @@ public final class MedScreens {
             } else {
                 medicine.timings().remove(timing);
             }
+            bindTiming(row, row.findViewById(R.id.check_timing_before), medicine, DoseTiming.BEFORE_MEAL);
+            bindTiming(row, row.findViewById(R.id.check_timing_after), medicine, DoseTiming.AFTER_MEAL_30);
+            if (row.getContext() instanceof AppCompatActivity) {
+                AppCompatActivity activity = (AppCompatActivity) row.getContext();
+                TextView frequency = row.findViewById(R.id.text_row_frequency);
+                if (frequency != null) {
+                    frequency.setText(frequencyLine(
+                            activity,
+                            medicine.rounds().size(),
+                            timingsText(activity, medicine)
+                    ));
+                }
+            }
         });
+    }
+
+    static boolean timingSelected(MedicineDraft medicine, DoseTiming timing) {
+        if (medicine.timings().contains(timing)) {
+            return true;
+        }
+        return timing == DoseTiming.AFTER_MEAL_30
+                && MealTimingText.displaysAsAfterMeal(medicine.getMealRelation());
     }
 
     private static void syncBedtimeTiming(MedicineDraft medicine, CheckBox timingBed) {
@@ -1197,7 +1236,7 @@ public final class MedScreens {
         if (frequency == null) {
             return;
         }
-        frequency.setText(activity.getString(R.string.med_frequency, medicine.rounds().size()));
+        frequency.setText(frequencyLine(activity, medicine.rounds().size(), timingsText(activity, medicine)));
     }
 
     private static void pickDate(AppCompatActivity activity, LocalDate current, java.util.function.Consumer<LocalDate> onPick) {
@@ -1259,7 +1298,7 @@ public final class MedScreens {
     }
 
     private static String medicineDetail(AppCompatActivity activity, MedicineDraft medicine) {
-        return draftAmountLabel(activity, medicine) + " · " + timingsText(activity, medicine.timings());
+        return draftAmountLabel(activity, medicine) + " · " + timingsText(activity, medicine);
     }
 
     private static String draftAmountLabel(AppCompatActivity activity, MedicineDraft medicine) {
@@ -1476,6 +1515,12 @@ public final class MedScreens {
         dialog.show();
     }
 
+    private static String assignGuidance(AppCompatActivity activity) {
+        return activity.getString(R.string.med_slot_assign_reflects)
+                + "\n"
+                + activity.getString(R.string.med_slot_assign_caution);
+    }
+
     private static CharSequence slotNote(AppCompatActivity activity) {
         return activity.getString(R.string.med_slot_no_duplicate)
                 + "\n"
@@ -1649,16 +1694,15 @@ public final class MedScreens {
         com.google.android.material.button.MaterialButton done = root.findViewById(R.id.button_slot_done);
         done.setText(R.string.med_slot_assign_done);
         done.setOnClickListener(v -> {
-            if (store.pendingSlotIndex() == null) {
-                host.showMessage(activity.getString(R.string.med_slot_assign_need));
-                return;
-            }
+            Integer chosen = store.pendingSlotIndex();
             if (!store.confirmSlotAssign()) {
                 host.showMessage(activity.getString(R.string.pillbox_slot_full));
                 return;
             }
             host.popTo(MedScreen.LIST);
-            host.showMessage(activity.getString(R.string.med_slot_assigned_local));
+            host.showMessage(activity.getString(chosen == null
+                    ? R.string.pillbox_release_done
+                    : R.string.med_slot_assigned_local));
         });
         return root;
     }
@@ -1667,38 +1711,100 @@ public final class MedScreens {
         DoseTiming[] values = DoseTiming.values();
         CharSequence[] labels = new CharSequence[values.length];
         boolean[] checked = new boolean[values.length];
+        boolean hadAfterTiming = medicine.timings().contains(DoseTiming.AFTER_MEAL_30);
+        boolean hadAfterPhrase = MealTimingText.displaysAsAfterMeal(medicine.getMealRelation());
         for (int index = 0; index < values.length; index++) {
             labels[index] = timingLabel(activity, values[index]);
-            checked[index] = medicine.timings().contains(values[index]);
+            checked[index] = medicine.timings().contains(values[index])
+                    || (values[index] == DoseTiming.AFTER_MEAL_30 && hadAfterPhrase);
         }
         new MaterialAlertDialogBuilder(activity, R.style.ThemeOverlay_Yakyeon_Dialog)
                 .setTitle(activity.getString(R.string.med_timing))
                 .setMultiChoiceItems(labels, checked, (dialog, which, isChecked) -> checked[which] = isChecked)
                 .setPositiveButton(android.R.string.ok, (dialog, which) -> {
+                    boolean afterChecked = false;
                     medicine.timings().clear();
                     for (int index = 0; index < values.length; index++) {
-                        if (checked[index]) {
-                            medicine.timings().add(values[index]);
+                        if (!checked[index]) {
+                            continue;
                         }
+                        if (values[index] == DoseTiming.AFTER_MEAL_30) {
+                            afterChecked = true;
+                            if (hadAfterPhrase && !hadAfterTiming) {
+                                continue;
+                            }
+                        }
+                        medicine.timings().add(values[index]);
+                    }
+                    if (!afterChecked && hadAfterPhrase) {
+                        medicine.clearMealRelation();
                     }
                     after.run();
                 })
                 .show();
     }
 
-    private static String timingsText(AppCompatActivity activity, Set<DoseTiming> timings) {
-        if (timings == null || timings.isEmpty()) {
-            return activity.getString(R.string.med_timing_unset);
+    private static String frequencyLine(AppCompatActivity activity, int times, String timing) {
+        String frequency = activity.getString(R.string.med_frequency, times);
+        if (timing == null || timing.isEmpty()
+                || activity.getString(R.string.med_timing_unset).equals(timing)) {
+            return frequency;
         }
+        return frequency + " · " + timing;
+    }
+
+    private static String serverMealLabel(AppCompatActivity activity, HomeContracts.Medication medication) {
+        if (medication == null) {
+            return null;
+        }
+        if (MealTimingText.displaysAsAfterMeal(medication.mealRelation)) {
+            return activity.getString(R.string.med_timing_after);
+        }
+        if ("BEFORE_MEAL".equals(medication.mealRelation)) {
+            return activity.getString(R.string.med_timing_before);
+        }
+        return null;
+    }
+
+    private static String timingsText(AppCompatActivity activity, MedicineDraft medicine) {
+        String meal = medicine == null ? null : medicine.getMealRelation();
+        Set<DoseTiming> timings = medicine == null ? null : medicine.timings();
+        return timingsText(activity, timings, meal);
+    }
+
+    private static String timingsText(AppCompatActivity activity, Set<DoseTiming> timings) {
+        return timingsText(activity, timings, null);
+    }
+
+    private static String timingsText(
+            AppCompatActivity activity,
+            Set<DoseTiming> timings,
+            String mealRelation
+    ) {
         StringBuilder text = new StringBuilder();
-        for (DoseTiming timing : DoseTiming.values()) {
-            if (!timings.contains(timing)) {
-                continue;
+        boolean showedAfter = false;
+        if (timings != null) {
+            for (DoseTiming timing : DoseTiming.values()) {
+                if (!timings.contains(timing)) {
+                    continue;
+                }
+                if (text.length() > 0) {
+                    text.append(", ");
+                }
+                text.append(timingLabel(activity, timing));
+                if (timing == DoseTiming.AFTER_MEAL_30) {
+                    showedAfter = true;
+                }
             }
+        }
+        if (!showedAfter && MealTimingText.displaysAsAfterMeal(mealRelation)) {
             if (text.length() > 0) {
                 text.append(", ");
             }
-            text.append(timingLabel(activity, timing));
+            text.append(activity.getString(R.string.med_timing_after));
+        }
+        if (text.length() == 0) {
+            return activity.getString(R.string.med_timing_unset);
         }
         return text.toString();
     }
@@ -1720,6 +1826,8 @@ public final class MedScreens {
             MainScreens.CareView view,
             String message,
             java.util.List<HomeContracts.Prescription> prescriptions,
+            MainScreens.CareView pillboxView,
+            CareContracts.Pillbox pillbox,
             boolean writes,
             Host host
     ) {
@@ -1765,10 +1873,10 @@ public final class MedScreens {
             boolean ended = prescriptionEnded(prescription);
             if (ended) {
                 anyStopped = true;
-                stopped.addView(serverEnvelope(activity, prescription, true, writes, host));
+                stopped.addView(serverEnvelope(activity, prescription, pillboxView, pillbox, true, writes, host));
             } else {
                 anyActive = true;
-                active.addView(serverEnvelope(activity, prescription, false, writes, host));
+                active.addView(serverEnvelope(activity, prescription, pillboxView, pillbox, false, writes, host));
             }
         }
         root.findViewById(R.id.text_med_active).setVisibility(anyActive ? View.VISIBLE : View.GONE);
@@ -1815,9 +1923,49 @@ public final class MedScreens {
             if (item.mealRelation != null) {
                 medicine.setMealRelation(item.mealRelation, item.mealOffsetMin == null ? null : item.mealOffsetMin.intValue());
             }
+            applyRecognizedTiming(medicine, item);
+            applyRecognizedRounds(medicine, item);
             if (item.totalDays >= 1L && item.totalDays <= 365L) {
                 medicine.setEnd(start.plusDays(item.totalDays - 1L));
             }
+        }
+    }
+
+    private static void applyRecognizedRounds(MedicineDraft medicine, HomeContracts.RecognizedMedication item) {
+        if (item.timingSlots == null) {
+            return;
+        }
+        for (String slot : item.timingSlots) {
+            DoseRound round = roundForSlot(slot);
+            if (round != null) {
+                medicine.rounds().add(round);
+            }
+        }
+    }
+
+    private static DoseRound roundForSlot(String slot) {
+        if (HomeContracts.SLOT_MORNING.equals(slot)) {
+            return DoseRound.MORNING;
+        }
+        if (HomeContracts.SLOT_LUNCH.equals(slot)) {
+            return DoseRound.LUNCH;
+        }
+        if (HomeContracts.SLOT_DINNER.equals(slot)) {
+            return DoseRound.EVENING;
+        }
+        if (HomeContracts.SLOT_BEDTIME.equals(slot)) {
+            return DoseRound.BEDTIME;
+        }
+        return null;
+    }
+
+    private static void applyRecognizedTiming(MedicineDraft medicine, HomeContracts.RecognizedMedication item) {
+        if ("BEFORE_MEAL".equals(item.mealRelation)) {
+            medicine.timings().add(DoseTiming.BEFORE_MEAL);
+            return;
+        }
+        if ("AFTER_MEAL".equals(item.mealRelation) && item.mealOffsetMin != null && item.mealOffsetMin == 30L) {
+            medicine.timings().add(DoseTiming.AFTER_MEAL_30);
         }
     }
 
@@ -1879,6 +2027,28 @@ public final class MedScreens {
         return MedicationRules.hasRequiredFields(medicine);
     }
 
+    private static String serverSlotStatus(
+            AppCompatActivity activity,
+            long prescriptionId,
+            MainScreens.CareView pillboxView,
+            CareContracts.Pillbox pillbox
+    ) {
+        if (pillboxView == MainScreens.CareView.ABSENT) {
+            return activity.getString(R.string.pillbox_slot_blocked);
+        }
+        if (pillboxView != MainScreens.CareView.READY || pillbox == null) {
+            return null;
+        }
+        if (CareContracts.assignmentAmbiguous(pillbox, prescriptionId)) {
+            return null;
+        }
+        CareContracts.Compartment compartment = CareContracts.compartmentForPrescription(pillbox, prescriptionId);
+        if (compartment == null) {
+            return activity.getString(R.string.med_slot_unassigned);
+        }
+        return activity.getString(R.string.med_slot_server_current, compartment.compartmentNo);
+    }
+
     private static boolean prescriptionEnded(HomeContracts.Prescription prescription) {
         if (prescription.medications.isEmpty()) {
             return false;
@@ -1891,9 +2061,130 @@ public final class MedScreens {
         return true;
     }
 
+    public static View serverSlot(
+            AppCompatActivity activity,
+            HomeContracts.Prescription prescription,
+            CareContracts.Pillbox pillbox,
+            Integer selectedCompartmentNo,
+            boolean saveBusy,
+            Host host
+    ) {
+        View root = LayoutInflater.from(activity).inflate(R.layout.screen_med_slot, null);
+        long prescriptionId = prescription == null ? 0L : prescription.prescriptionId;
+        String hospital = prescription == null || prescription.hospitalName == null
+                || prescription.hospitalName.trim().isEmpty()
+                ? activity.getString(R.string.med_slot_empty_name)
+                : prescription.hospitalName.trim();
+        List<String> names = new ArrayList<>();
+        List<Integer> rounds = new ArrayList<>();
+        if (prescription != null) {
+            for (HomeContracts.Medication medication : prescription.medications) {
+                names.add(displayName(activity, medication.drugName));
+                rounds.add(medication.prn
+                        ? medication.timingSlots.size()
+                        : (int) medication.timesPerDay);
+            }
+        }
+        bindSlotBundle(activity, root, hospital, names, rounds);
+        CareContracts.Compartment current = CareContracts.compartmentForPrescription(pillbox, prescriptionId);
+        TextView note = root.findViewById(R.id.text_slot_note);
+        String status = current == null
+                ? activity.getString(R.string.med_slot_unassigned)
+                : activity.getString(R.string.med_slot_server_current, current.compartmentNo);
+        note.setText(assignGuidance(activity) + "\n" + status);
+        LinearLayout list = root.findViewById(R.id.slot_list);
+        List<CareContracts.Compartment> compartments = pillbox == null
+                ? java.util.Collections.emptyList()
+                : pillbox.compartments;
+        for (int index = 0; index < compartments.size(); index++) {
+            CareContracts.Compartment compartment = compartments.get(index);
+            boolean selectable = CareContracts.compartmentSelectable(compartment, prescriptionId);
+            boolean selected = selectable
+                    && selectedCompartmentNo != null
+                    && selectedCompartmentNo.longValue() == compartment.compartmentNo;
+            int compartmentNo = (int) compartment.compartmentNo;
+            View row = serverSlotChoice(activity, index, compartment, prescriptionId, selectable, selected);
+            row.setOnClickListener(v -> {
+                if (saveBusy) {
+                    return;
+                }
+                if (!selectable) {
+                    host.showMessage(activity.getString(R.string.pillbox_slot_full));
+                    return;
+                }
+                host.chooseServerCompartment(compartmentNo);
+            });
+            list.addView(row);
+        }
+        root.findViewById(R.id.button_slot_without).setVisibility(View.GONE);
+        com.google.android.material.button.MaterialButton done = root.findViewById(R.id.button_slot_done);
+        done.setText(R.string.med_slot_assign_done);
+        done.setEnabled(!saveBusy);
+        done.setOnClickListener(v -> host.confirmServerCompartment());
+        return root;
+    }
+
+    private static View serverSlotChoice(
+            AppCompatActivity activity,
+            int position,
+            CareContracts.Compartment compartment,
+            long prescriptionId,
+            boolean selectable,
+            boolean selected
+    ) {
+        View card = LayoutInflater.from(activity).inflate(R.layout.item_slot_choice, null);
+        if (!selectable) {
+            card.setBackgroundResource(R.drawable.bg_slot_locked);
+        } else if (selected) {
+            card.setBackgroundResource(R.drawable.bg_slot_selected);
+        } else {
+            card.setBackgroundResource(R.drawable.bg_slot_idle);
+        }
+        TextView title = card.findViewById(R.id.text_choice_title);
+        title.setText(activity.getString(R.string.pillbox_slot_name, compartment.compartmentNo));
+        TextView detail = card.findViewById(R.id.text_choice_detail);
+        TextView badge = card.findViewById(R.id.text_choice_badge);
+        android.widget.ImageView state = card.findViewById(R.id.icon_choice_state);
+        boolean current = compartment.prescriptionId != null
+                && compartment.prescriptionId == prescriptionId
+                && !CareContracts.EMPTY.equals(compartment.state);
+        if (!selectable) {
+            String hospital = compartment.hospitalName == null ? "" : compartment.hospitalName.trim();
+            detail.setText(hospital.isEmpty()
+                    ? activity.getString(R.string.pillbox_slot_full)
+                    : activity.getString(R.string.pillbox_slot_locked, hospital));
+            badge.setVisibility(View.VISIBLE);
+            state.setVisibility(View.VISIBLE);
+            state.setImageResource(R.drawable.ic_slot_lock);
+            state.setContentDescription(activity.getString(R.string.pillbox_slot_in_use));
+        } else if (selected) {
+            detail.setText(current
+                    ? activity.getString(R.string.med_slot_server_current, compartment.compartmentNo)
+                    : activity.getString(R.string.pillbox_slot_chosen));
+            detail.setTextColor(activity.getColor(R.color.yakyeon_brand));
+            state.setVisibility(View.VISIBLE);
+            state.setImageResource(R.drawable.ic_slot_check);
+            state.setContentDescription(activity.getString(R.string.med_slot_selected));
+        } else {
+            detail.setText(R.string.pillbox_slot_open);
+        }
+        int gap = activity.getResources().getDimensionPixelSize(R.dimen.space_s);
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+        );
+        if (position > 0) {
+            params.topMargin = gap + Math.round(2f * activity.getResources().getDisplayMetrics().density);
+        }
+        card.setLayoutParams(params);
+        return card;
+    }
+
     private static View serverEnvelope(
             AppCompatActivity activity,
             HomeContracts.Prescription prescription,
+            MainScreens.CareView pillboxView,
+            CareContracts.Pillbox pillbox,
             boolean ended,
             boolean writes,
             Host host
@@ -1903,9 +2194,12 @@ public final class MedScreens {
                 ? activity.getString(R.string.med_slot_empty_name)
                 : prescription.hospitalName;
         ((TextView) card.findViewById(R.id.text_envelope_name)).setText(name);
-        ((TextView) card.findViewById(R.id.text_envelope_count)).setText(
-                activity.getString(R.string.med_bundle_count, prescription.medications.size())
-        );
+        String count = activity.getString(R.string.med_bundle_count, prescription.medications.size());
+        String slotStatus = serverSlotStatus(activity, prescription.prescriptionId, pillboxView, pillbox);
+        if (slotStatus != null) {
+            count = count + "\n" + slotStatus;
+        }
+        ((TextView) card.findViewById(R.id.text_envelope_count)).setText(count);
         TextView badge = card.findViewById(R.id.text_envelope_badge);
         View actions = card.findViewById(R.id.row_envelope_actions);
         View stop = card.findViewById(R.id.button_envelope_stop);
@@ -1924,7 +2218,7 @@ public final class MedScreens {
             card.findViewById(R.id.button_edit_time).setOnClickListener(v ->
                     host.openServerSchedule(prescription.prescriptionId));
             card.findViewById(R.id.button_change_slot).setOnClickListener(v ->
-                    host.showMessage(activity.getString(R.string.med_slot_after_register)));
+                    host.openServerCompartment(prescription.prescriptionId));
             stop.setOnClickListener(v -> ConfirmDialog.show(
                     activity,
                     activity.getString(R.string.med_stop_title),
@@ -1953,7 +2247,7 @@ public final class MedScreens {
                     ? medication.timingSlots.size()
                     : (int) medication.timesPerDay;
             ((TextView) row.findViewById(R.id.text_medicine_frequency)).setText(
-                    activity.getString(R.string.med_frequency, times)
+                    frequencyLine(activity, times, serverMealLabel(activity, medication))
             );
             if (!ended && writes && !HomeContracts.STATUS_ENDED.equals(medication.status)) {
                 row.setOnClickListener(v -> ConfirmDialog.show(

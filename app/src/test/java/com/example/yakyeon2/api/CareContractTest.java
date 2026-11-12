@@ -101,6 +101,134 @@ public class CareContractTest {
         assertFalse(CareContracts.showsOpened(pending));
         assertEquals(CareContracts.EMPTY, pillbox.compartments.get(2).state);
         assertEquals(2, CareContracts.occupiedCompartments(pillbox));
+        assertTrue(CareContracts.hasEmptyCompartment(pillbox));
+        assertEquals(1L, CareContracts.compartmentForPrescription(pillbox, 7L).compartmentNo);
+        assertNull(CareContracts.compartmentForPrescription(pillbox, 99L));
+        assertFalse(CareContracts.assignmentAmbiguous(pillbox, 7L));
+        assertTrue(CareContracts.compartmentSelectable(pillbox.compartments.get(0), 7L));
+        assertFalse(CareContracts.compartmentSelectable(pillbox.compartments.get(0), 8L));
+        assertFalse(CareContracts.compartmentSelectable(pillbox.compartments.get(1), 7L));
+        assertTrue(CareContracts.compartmentSelectable(pillbox.compartments.get(2), 7L));
+    }
+
+    @Test
+    public void assignmentBodyUsesTheDocumentedFields() throws Exception {
+        JSONObject body = new JSONObject()
+                .put("mapping_id", 9)
+                .put("device_id", 3)
+                .put("compartment_no", 2)
+                .put("prescription_id", 7)
+                .put("status", "PENDING_LOAD")
+                .put("loaded_count", JSONObject.NULL)
+                .put("remaining_count", JSONObject.NULL)
+                .put("low_stock", false);
+        CareContracts.Assignment assignment = CareContracts.readAssignment(body);
+        assertEquals(9L, assignment.mappingId);
+        assertEquals(3L, assignment.deviceId);
+        assertEquals(2L, assignment.compartmentNo);
+        assertEquals(7L, assignment.prescriptionId);
+        assertEquals(CareContracts.PENDING_LOAD, assignment.status);
+        assertNull(assignment.loadedCount);
+        assertNull(assignment.remainingCount);
+        JSONObject active = new JSONObject()
+                .put("mapping_id", 9)
+                .put("device_id", 3)
+                .put("compartment_no", 2)
+                .put("prescription_id", 7)
+                .put("status", "ACTIVE")
+                .put("loaded_count", 0)
+                .put("remaining_count", 0);
+        CareContracts.Assignment loaded = CareContracts.readAssignment(active);
+        assertTrue(CareContracts.assignmentCompleted(loaded, 7L, 2L));
+        assertEquals(Long.valueOf(0L), loaded.loadedCount);
+        assertEquals(Long.valueOf(0L), loaded.remainingCount);
+        assertFalse(CareContracts.assignmentCompleted(assignment, 7L, 2L));
+        JSONObject negative = new JSONObject(active.toString()).put("loaded_count", -1);
+        assertRejected(() -> CareContracts.readAssignment(negative));
+        JSONObject unknown = new JSONObject(body.toString()).put("status", "LOADED");
+        assertRejected(() -> CareContracts.readAssignment(unknown));
+        JSONObject outOfRange = new JSONObject(body.toString()).put("compartment_no", 4);
+        assertRejected(() -> CareContracts.readAssignment(outOfRange));
+        JSONObject missingDevice = new JSONObject(body.toString());
+        missingDevice.remove("device_id");
+        assertRejected(() -> CareContracts.readAssignment(missingDevice));
+        JSONObject second = pillboxJson();
+        second.getJSONArray("compartments").getJSONObject(0)
+                .put("state", "ACTIVE")
+                .put("prescription_id", 7)
+                .put("mapping_id", 43);
+        CareContracts.Pillbox ambiguous = CareContracts.readPillbox(second);
+        assertTrue(CareContracts.assignmentAmbiguous(ambiguous, 7L));
+        assertNull(CareContracts.compartmentForPrescription(ambiguous, 7L));
+    }
+
+    @Test
+    public void activeAssignmentKeepsResponseCounts() throws Exception {
+        CareContracts.Pillbox pillbox = CareContracts.readPillbox(pillboxJson());
+        CareContracts.Assignment pending = CareContracts.readAssignment(new JSONObject()
+                .put("mapping_id", 9)
+                .put("device_id", 3)
+                .put("compartment_no", 2)
+                .put("prescription_id", 8)
+                .put("status", "PENDING_LOAD"));
+        assertEquals(CareContracts.PENDING_LOAD, CareContracts.applyActiveAssignment(pillbox, pending, null)
+                .compartments.get(1).state);
+        CareContracts.Assignment active = CareContracts.readAssignment(new JSONObject()
+                .put("mapping_id", 11)
+                .put("device_id", 3)
+                .put("compartment_no", 3)
+                .put("prescription_id", 7)
+                .put("status", "ACTIVE")
+                .put("loaded_count", 6)
+                .put("remaining_count", 6));
+        CareContracts.Pillbox updated = CareContracts.applyActiveAssignment(pillbox, active, 1L);
+        CareContracts.Compartment assigned = CareContracts.compartmentByNo(updated, 3L);
+        assertEquals(CareContracts.ACTIVE, assigned.state);
+        assertEquals(Long.valueOf(6L), assigned.loadedCount);
+        assertEquals(Long.valueOf(6L), assigned.remainingCount);
+        assertEquals(Long.valueOf(7L), assigned.prescriptionId);
+        assertEquals(CareContracts.EMPTY, CareContracts.compartmentByNo(updated, 1L).state);
+        assertNull(CareContracts.compartmentByNo(updated, 1L).loadedCount);
+        assertEquals(3L, CareContracts.compartmentForPrescription(updated, 7L).compartmentNo);
+        CareContracts.Pillbox source = CareContracts.readPillbox(pillboxJson());
+        JSONObject pendingJson = pillboxJson();
+        pendingJson.getJSONArray("compartments").getJSONObject(1)
+                .put("mapping_id", 8)
+                .put("prescription_id", 9);
+        CareContracts.Pillbox withPending = CareContracts.readPillbox(pendingJson);
+        CareContracts.Compartment pendingSlot = CareContracts.compartmentByNo(withPending, 2L);
+        assertTrue(CareContracts.canRelease(pendingSlot));
+        assertTrue(CareContracts.canRelease(CareContracts.compartmentByNo(source, 1L)));
+        assertFalse(CareContracts.canRelease(CareContracts.compartmentByNo(source, 2L)));
+        assertFalse(CareContracts.canRelease(CareContracts.compartmentByNo(source, 3L)));
+        CareContracts.Compartment keptActive = CareContracts.compartmentByNo(withPending, 1L);
+        CareContracts.Compartment keptEmpty = CareContracts.compartmentByNo(withPending, 3L);
+        CareContracts.Pillbox cleared = CareContracts.clearMapping(withPending, 8L);
+        CareContracts.Compartment emptied = CareContracts.compartmentByNo(cleared, 2L);
+        assertEquals(CareContracts.EMPTY, emptied.state);
+        assertNull(emptied.mappingId);
+        assertNull(emptied.prescriptionId);
+        assertTrue(emptied.medications.isEmpty());
+        assertNull(emptied.remainingCount);
+        assertEquals(keptActive, CareContracts.compartmentByNo(cleared, 1L));
+        assertEquals(keptEmpty, CareContracts.compartmentByNo(cleared, 3L));
+        assertEquals(Long.valueOf(42L), CareContracts.compartmentByNo(cleared, 1L).mappingId);
+        assertEquals(1, CareContracts.occupiedCompartments(CareContracts.clearMapping(source, 42L)));
+        CareContracts.Assignment asNeeded = CareContracts.readAssignment(new JSONObject()
+                .put("mapping_id", 12)
+                .put("device_id", 3)
+                .put("compartment_no", 2)
+                .put("prescription_id", 8)
+                .put("status", "ACTIVE")
+                .put("loaded_count", 0)
+                .put("remaining_count", 0));
+        CareContracts.Compartment prn = CareContracts.compartmentByNo(
+                CareContracts.applyActiveAssignment(pillbox, asNeeded, null),
+                2L
+        );
+        assertEquals(CareContracts.ACTIVE, prn.state);
+        assertEquals(Long.valueOf(0L), prn.loadedCount);
+        assertEquals(Long.valueOf(0L), prn.remainingCount);
     }
 
     @Test
@@ -111,13 +239,21 @@ public class CareContractTest {
         assertFalse(register.has("max_compartments"));
         assertEquals(2L, CareContracts.registerDeviceBody("SERIAL", "secret-value", 2L).getLong("max_compartments"));
         assertEquals(1L, CareContracts.compartmentBody(1L).getLong("compartment_no"));
+        assertFalse(CareContracts.compartmentBody(1L).has("loaded_count"));
+        assertFalse(CareContracts.compartmentBody(1L, null).has("loaded_count"));
+        assertEquals(12L, CareContracts.compartmentBody(2L, 12L).getLong("loaded_count"));
+        assertEquals(1500L, CareContracts.compartmentBody(1L, 1500L).getLong("loaded_count"));
         assertEquals(100L, CareContracts.loadBody(100L).getLong("loaded_count"));
         assertEquals(1L, CareContracts.refillBody(1L).getLong("added_count"));
+        assertFalse(CareContracts.refillBody(100L).has("loaded_count"));
         assertRejected(() -> CareContracts.compartmentBody(0L));
         assertRejected(() -> CareContracts.compartmentBody(4L));
+        assertRejected(() -> CareContracts.compartmentBody(1L, 0L));
+        assertRejected(() -> CareContracts.compartmentBody(1L, 1501L));
         assertRejected(() -> CareContracts.loadBody(0L));
         assertRejected(() -> CareContracts.loadBody(101L));
         assertRejected(() -> CareContracts.refillBody(0L));
+        assertRejected(() -> CareContracts.refillBody(101L));
         assertRejected(() -> CareContracts.registerDeviceBody("", "secret", null));
     }
 

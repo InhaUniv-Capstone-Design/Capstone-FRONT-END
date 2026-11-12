@@ -449,6 +449,127 @@ public class HomeContractTest {
     }
 
     @Test
+    public void directNameOmitsDrugId() throws Exception {
+        JSONObject typed = HomeContracts.medicationBody(
+                null,
+                "직접약",
+                "1",
+                false,
+                java.util.Collections.singletonList(HomeContracts.SLOT_MORNING),
+                "AFTER_MEAL",
+                30,
+                7,
+                "2026-10-27"
+        );
+        Assert.assertFalse(typed.has("drug_id"));
+        Assert.assertEquals("직접약", typed.getString("input_name"));
+        Assert.assertFalse(typed.has("is_prn"));
+
+        JSONObject prn = HomeContracts.medicationBody(
+                null,
+                "필요시약",
+                null,
+                true,
+                java.util.Collections.emptyList(),
+                null,
+                null,
+                3,
+                "2026-10-27"
+        );
+        Assert.assertFalse(prn.has("drug_id"));
+        Assert.assertEquals("필요시약", prn.getString("input_name"));
+        Assert.assertTrue(prn.getBoolean("is_prn"));
+        Assert.assertEquals(0, prn.getJSONArray("timing_slots").length());
+    }
+
+    @Test
+    public void timingSlotStaysActiveAfterTakenAndIgnoresEmptyPrn() throws Exception {
+        LocalDate today = LocalDate.parse("2026-10-27");
+        HomeContracts.Dose taken = dose(
+                11L,
+                "MORNING",
+                "2026-10-27T08:00:00+09:00",
+                "2026-10-27T11:00:00+09:00",
+                "NORMAL",
+                "2026-10-27T08:05:00+09:00"
+        );
+        Assert.assertTrue(HomeContracts.timingSlotActive(
+                HomeContracts.SLOT_MORNING,
+                HomeContracts.STATE_DONE,
+                true,
+                java.util.Collections.emptyList(),
+                true,
+                null,
+                false,
+                today
+        ));
+        Assert.assertTrue(HomeContracts.timingSlotActive(
+                HomeContracts.SLOT_MORNING,
+                HomeContracts.STATE_NONE,
+                true,
+                java.util.Collections.singletonList(taken),
+                true,
+                null,
+                false,
+                today
+        ));
+        Assert.assertFalse(HomeContracts.timingSlotActive(
+                HomeContracts.SLOT_LUNCH,
+                HomeContracts.STATE_NONE,
+                true,
+                java.util.Collections.singletonList(taken),
+                true,
+                java.util.Collections.singletonList(activeMorning(today.toString(), today.plusDays(6).toString(), false)),
+                true,
+                today
+        ));
+        Assert.assertFalse(HomeContracts.timingSlotActive(
+                HomeContracts.SLOT_MORNING,
+                null,
+                false,
+                null,
+                false,
+                java.util.Collections.singletonList(activeMorning("2026-11-01", "2026-11-07", false)),
+                true,
+                today
+        ));
+        Assert.assertTrue(HomeContracts.timingSlotActive(
+                HomeContracts.SLOT_MORNING,
+                null,
+                false,
+                null,
+                false,
+                java.util.Collections.singletonList(activeMorning(today.toString(), today.plusDays(6).toString(), false)),
+                true,
+                today
+        ));
+        Assert.assertFalse(HomeContracts.timingSlotActive(
+                HomeContracts.SLOT_MORNING,
+                null,
+                false,
+                null,
+                false,
+                java.util.Collections.singletonList(activeMorning(today.toString(), today.plusDays(6).toString(), true)),
+                true,
+                today
+        ));
+    }
+
+    private static HomeContracts.Medication activeMorning(String start, String end, boolean prn) throws Exception {
+        String slots = prn ? "[]" : "[\"MORNING\"]";
+        return HomeContracts.readMedication(new JSONObject(
+                "{"
+                        + "\"medication_id\":9,\"prescription_id\":4,\"hospital_name\":null,\"drug_id\":null,"
+                        + "\"drug_name\":\"직접입력\",\"manufacturer\":null,\"match_status\":\"UNMATCHED\","
+                        + "\"dose_per_intake\":1,\"is_prn\":" + prn + ",\"times_per_day\":" + (prn ? 0 : 1) + ","
+                        + "\"timing_slots\":" + slots + ",\"meal_relation\":null,\"meal_offset_min\":null,"
+                        + "\"total_days\":7,\"start_date\":\"" + start + "\",\"end_date\":\"" + end + "\","
+                        + "\"ended_on\":null,\"status\":\"ACTIVE\""
+                        + "}"
+        ));
+    }
+
+    @Test
     public void errorCodesHaveFallbacks() {
         Assert.assertNotNull(ApiMessages.fallback(ApiCodes.DOSE_NOT_DECIDED));
         Assert.assertNotNull(ApiMessages.fallback(ApiCodes.DOSE_EXPIRED));

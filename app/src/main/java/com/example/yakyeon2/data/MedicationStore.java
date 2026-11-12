@@ -400,6 +400,10 @@ public final class MedicationStore {
     }
 
     public void choosePendingSlot(int index) {
+        if (pendingSlotIndex != null && pendingSlotIndex == index) {
+            pendingSlotIndex = null;
+            return;
+        }
         pendingSlotIndex = index;
     }
 
@@ -417,7 +421,7 @@ public final class MedicationStore {
     }
 
     public boolean confirmSlotAssign() {
-        if (slotAssignEnvelopeId == null || pendingSlotIndex == null) {
+        if (slotAssignEnvelopeId == null) {
             return false;
         }
         if (!assignSlot(slotAssignEnvelopeId, pendingSlotIndex)) {

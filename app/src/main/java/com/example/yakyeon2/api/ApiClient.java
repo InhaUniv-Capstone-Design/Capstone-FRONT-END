@@ -1,6 +1,7 @@
 package com.example.yakyeon2.api;
 
 import android.content.Context;
+import android.util.Log;
 
 import com.example.yakyeon2.data.AuthTokenStore;
 
@@ -206,9 +207,15 @@ public final class ApiClient {
                 }
             }
             int status = connection.getResponseCode();
+            if (path != null && (path.contains("/doses") || path.contains("/dose-history") || path.contains("/home-summary"))) {
+                Log.i("BoxTaken", "http " + method + " " + path + " status=" + status);
+            }
             InputStream stream = status >= 400 ? connection.getErrorStream() : connection.getInputStream();
             return new HttpResult(status, read(stream));
         } catch (IOException exception) {
+            if (path != null && (path.contains("/doses") || path.contains("/dose-history") || path.contains("/home-summary"))) {
+                Log.i("BoxTaken", "http " + method + " " + path + " network");
+            }
             throw ApiException.disconnected();
         } finally {
             if (connection != null) {

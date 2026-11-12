@@ -106,7 +106,7 @@ public final class MedicineNamePicker {
                     if (ticket != generation[0] || !dialog.isShowing()) {
                         return;
                     }
-                    fillRemote(activity, results, empty, rows, error, (name, drugId) -> {
+                    fillRemote(activity, results, empty, text, rows, error, (name, drugId) -> {
                         callback.onChosen(name, drugId);
                         dialog.dismiss();
                     });
@@ -124,6 +124,7 @@ public final class MedicineNamePicker {
             AppCompatActivity activity,
             LinearLayout results,
             TextView empty,
+            String query,
             java.util.List<HomeContracts.DrugSuggestion> rows,
             String error,
             RemoteChoice callback
@@ -135,8 +136,17 @@ public final class MedicineNamePicker {
             return;
         }
         if (rows == null || rows.isEmpty()) {
-            empty.setVisibility(View.VISIBLE);
-            empty.setText(activity.getString(R.string.med_name_empty));
+            String typed = query == null ? "" : query.trim();
+            if (typed.length() >= 2) {
+                empty.setVisibility(View.VISIBLE);
+                empty.setText(R.string.med_search_empty);
+                results.addView(directEntry(activity, () -> callback.onChosen(typed, null)));
+            } else if (!typed.isEmpty()) {
+                empty.setVisibility(View.GONE);
+                results.addView(directEntry(activity, () -> callback.onChosen(typed, null)));
+            } else {
+                empty.setVisibility(View.GONE);
+            }
             return;
         }
         empty.setVisibility(View.GONE);
@@ -163,7 +173,14 @@ public final class MedicineNamePicker {
     ) {
         results.removeAllViews();
         List<MedicineNameCatalog.Match> hits = catalog.search(query);
-        empty.setVisibility(hits.isEmpty() ? View.VISIBLE : View.GONE);
+        String typed = query == null ? "" : query.trim();
+        if (hits.isEmpty() && !typed.isEmpty()) {
+            empty.setVisibility(View.VISIBLE);
+            empty.setText(R.string.med_search_empty);
+            results.addView(directEntry(activity, () -> callback.onChosen(typed)));
+        } else {
+            empty.setVisibility(View.GONE);
+        }
         LayoutInflater inflater = LayoutInflater.from(activity);
         for (MedicineNameCatalog.Match hit : hits) {
             View row = inflater.inflate(R.layout.item_medicine_name, results, false);
@@ -176,5 +193,16 @@ public final class MedicineNamePicker {
             row.setOnClickListener(v -> callback.onChosen(hit.name));
             results.addView(row);
         }
+    }
+
+    private static TextView directEntry(AppCompatActivity activity, Runnable onClick) {
+        TextView action = new TextView(activity);
+        action.setText(R.string.med_name_type_in);
+        action.setTextColor(activity.getColor(R.color.yakyeon_brand));
+        action.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 14);
+        action.setTypeface(action.getTypeface(), android.graphics.Typeface.BOLD);
+        action.setPadding(0, 16, 0, 16);
+        action.setOnClickListener(v -> onClick.run());
+        return action;
     }
 }

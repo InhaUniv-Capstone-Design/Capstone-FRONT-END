@@ -1,11 +1,14 @@
 package com.example.yakyeon2.fcm;
 
 import android.content.Context;
+import android.os.Handler;
+import android.os.Looper;
 import android.util.Log;
 
 import androidx.annotation.NonNull;
 
 import com.example.yakyeon2.R;
+import com.example.yakyeon2.data.AuthTokenStore;
 import com.google.firebase.messaging.FirebaseMessagingService;
 import com.google.firebase.messaging.RemoteMessage;
 
@@ -34,6 +37,8 @@ public class YakyeonMessagingService extends FirebaseMessagingService {
     public void onMessageReceived(@NonNull RemoteMessage message) {
         Map<String, String> data = message.getData();
         RemoteMessage.Notification notification = message.getNotification();
+        Log.i("BoxTaken", "onMessageReceived notification=" + (notification != null)
+                + " dataKeys=" + dataKeyNames(data));
         if (notification != null && data.isEmpty()) {
             Log.d(FcmRegistrar.TAG, "알림 메시지 수신");
         } else if (notification != null) {
@@ -47,16 +52,32 @@ public class YakyeonMessagingService extends FirebaseMessagingService {
         String title = serverCopy ? dataTitle : (notification == null ? null : notification.getTitle());
         String body = serverCopy ? dataBody : (notification == null ? null : notification.getBody());
         PushMessages.Incoming incoming = PushMessages.classify(data);
+        boolean signedIn = AuthTokenStore.hasSession(this);
+        Log.i("BoxTaken", "classify kind=" + incoming.kind
+                + " type=" + safeType(data)
+                + " status=" + safeField(data, "status")
+                + " taken_at=" + safeField(data, "taken_at")
+                + " dedupe=" + incoming.dedupeKey
+                + " suppress=" + incoming.suppressBecauseTaken
+                + " hasSession=" + signedIn);
         if (incoming.suppressBecauseTaken) {
             Log.d(FcmRegistrar.TAG, "이미 복용한 일정은 미복용 알림을 표시하지 않음");
+            Log.i("BoxTaken", "stop suppressBecauseTaken kind=" + incoming.kind);
             return;
         }
         List<String> recent = recentKeys(this);
         if (!PushMessages.accept(recent, incoming.dedupeKey)) {
             Log.d(FcmRegistrar.TAG, "같은 알림은 다시 표시하지 않음");
+            Log.i("BoxTaken", "stop duplicate dedupe=" + incoming.dedupeKey);
             return;
         }
         remember(this, recent);
+        if (BoxTakenRefresh.requestsReload(incoming.kind, signedIn)) {
+            Log.i("BoxTaken", "post BoxTakenRefresh.deliver");
+            new Handler(Looper.getMainLooper()).post(BoxTakenRefresh::deliver);
+        } else {
+            Log.i("BoxTaken", "skip deliver kind=" + incoming.kind + " hasSession=" + signedIn);
+        }
         String shownTitle = title;
         String shownBody = body;
         if (!serverCopy) {
@@ -72,6 +93,49 @@ public class YakyeonMessagingService extends FirebaseMessagingService {
 
     private static boolean hasText(String value) {
         return value != null && !value.trim().isEmpty();
+    }
+
+    private static String dataKeyNames(Map<String, String> data) {
+        if (data == null || data.isEmpty()) {
+            return "";
+        }
+        StringBuilder names = new StringBuilder();
+        for (String key : data.keySet()) {
+            if (names.length() > 0) {
+                names.append(',');
+            }
+            names.append(key);
+        }
+        return names.toString();
+    }
+
+    private static String safeType(Map<String, String> data) {
+        String type = safeField(data, "type");
+        if (!type.isEmpty()) {
+            return type;
+        }
+        type = safeField(data, "notification_type");
+        if (!type.isEmpty()) {
+            return "notification_type:" + type;
+        }
+        type = safeField(data, "event");
+        if (!type.isEmpty()) {
+            return "event:" + type;
+        }
+        type = safeField(data, "kind");
+        if (!type.isEmpty()) {
+            return "kind:" + type;
+        }
+        type = safeField(data, "setting_key");
+        return type.isEmpty() ? "" : "setting_key:" + type;
+    }
+
+    private static String safeField(Map<String, String> data, String key) {
+        if (data == null || key == null) {
+            return "";
+        }
+        String value = data.get(key);
+        return value == null ? "" : value.trim();
     }
 
     private String copyFor(PushMessages.Incoming incoming, String serverBody) {

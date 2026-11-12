@@ -86,6 +86,33 @@ public class HomeDoseFocusTest {
     }
 
     @Test
+    public void missedAndCompletedDosesFinishTheDay() {
+        long now = at(22, 0);
+        HomeDoseFocus.Board board = HomeDoseFocus.focus(Arrays.asList(
+                new HomeDoseFocus.Entry("피부과", "MORNING", at(8, 0), false, true),
+                dose("한의원", "DINNER", 19, 30, true),
+                dose("내과", "BEDTIME", 22, 0, true)
+        ), now, ZONE);
+
+        assertEquals(HomeDoseFocus.Outcome.DONE, board.outcome);
+        assertTrue(board.overdue.isEmpty());
+        assertTrue(board.upcoming.isEmpty());
+    }
+
+    @Test
+    public void anOpenDoseStillBlocksWhenAnotherWasMissed() {
+        long now = at(18, 0);
+        HomeDoseFocus.Board board = HomeDoseFocus.focus(Arrays.asList(
+                new HomeDoseFocus.Entry("피부과", "MORNING", at(8, 0), false, true),
+                dose("한의원", "DINNER", 19, 30, false)
+        ), now, ZONE);
+
+        assertEquals(HomeDoseFocus.Outcome.ACTIVE, board.outcome);
+        assertTrue(board.overdue.isEmpty());
+        assertEquals(1, board.upcoming.size());
+    }
+
+    @Test
     public void anUntakenEarlierDoseBlocksTheDoneMessage() {
         long now = at(22, 0);
         HomeDoseFocus.Board board = HomeDoseFocus.focus(Arrays.asList(

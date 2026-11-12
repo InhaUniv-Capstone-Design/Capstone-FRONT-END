@@ -1,5 +1,7 @@
 package com.example.yakyeon2.api;
 
+import com.example.yakyeon2.data.MealTimingText;
+
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -365,6 +367,7 @@ public final class HomeContracts {
         public final List<DrugSuggestion> candidates;
         public final String dosePerIntake;
         public final long timesPerDay;
+        public final List<String> timingSlots;
         public final long totalDays;
         public final boolean prn;
         public final String mealRelation;
@@ -376,6 +379,7 @@ public final class HomeContracts {
                 List<DrugSuggestion> candidates,
                 String dosePerIntake,
                 long timesPerDay,
+                List<String> timingSlots,
                 long totalDays,
                 boolean prn,
                 String mealRelation,
@@ -386,6 +390,7 @@ public final class HomeContracts {
             this.candidates = candidates;
             this.dosePerIntake = dosePerIntake;
             this.timesPerDay = timesPerDay;
+            this.timingSlots = timingSlots;
             this.totalDays = totalDays;
             this.prn = prn;
             this.mealRelation = mealRelation;
@@ -1029,8 +1034,8 @@ public final class HomeContracts {
                 throw ApiException.response(200);
             }
             String meal = JsonReads.optionalText(item, "meal_relation");
-            if (!knownMeal(meal)) {
-                throw ApiException.response(200);
+            if (!knownMeal(meal) && !MealTimingText.displaysAsAfterMeal(meal)) {
+                meal = null;
             }
             rows.add(new RecognizedMedication(
                     JsonReads.text(item, "drug_name"),
@@ -1038,10 +1043,11 @@ public final class HomeContracts {
                     readSuggestions(requiredArray(item, "candidates")),
                     JsonReads.decimal(item, "dose_per_intake"),
                     JsonReads.number(item, "times_per_day"),
+                    ocrTimingSlots(item),
                     JsonReads.number(item, "total_days"),
                     JsonReads.bool(item, "is_prn"),
                     meal,
-                    JsonReads.optionalNumber(item, "meal_offset_min")
+                    ocrMealOffset(item)
             ));
         }
         return new OcrDraft(
@@ -1121,6 +1127,79 @@ public final class HomeContracts {
             }
         }
         return null;
+    }
+
+    /**
+     * True when today has a scheduled dose in {@code slot}.
+     * A completed or missed summary state stays active.
+     * {@code NONE} does not. Today's dose rows count even when already taken.
+     * Registered medications are used only when neither the summary nor today's doses are ready.
+     * A PRN medication with no timing slot does not light a slot, and dates outside the course are ignored.
+     */
+    public static boolean timingSlotActive(
+            String slot,
+            String summaryState,
+            boolean summaryReady,
+            List<Dose> todayDoses,
+            boolean dosesReady,
+            List<Medication> medications,
+            boolean medicationsReady,
+            LocalDate today
+    ) {
+        if (slot == null) {
+            return false;
+        }
+        if (summaryReady && summaryState != null && !STATE_NONE.equals(summaryState)) {
+            return true;
+        }
+        if (dosesReady) {
+            if (todayDoses == null) {
+                return false;
+            }
+            for (Dose dose : todayDoses) {
+                if (dose != null && slot.equals(dose.timingSlot)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+        if (summaryReady && STATE_NONE.equals(summaryState)) {
+            return false;
+        }
+        if (!medicationsReady || medications == null || today == null) {
+            return false;
+        }
+        for (Medication medication : medications) {
+            if (medication == null || medication.timingSlots == null || !medication.timingSlots.contains(slot)) {
+                continue;
+            }
+            if (medication.prn && medication.timingSlots.isEmpty()) {
+                continue;
+            }
+            if (coversToday(medication, today)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean coversToday(Medication medication, LocalDate today) {
+        if (STATUS_ENDED.equals(medication.status) || STATUS_UPCOMING.equals(medication.status)) {
+            return false;
+        }
+        if (medication.prn && (medication.timingSlots == null || medication.timingSlots.isEmpty())) {
+            return false;
+        }
+        if (medication.startDate == null || medication.endDate == null) {
+            return false;
+        }
+        try {
+            LocalDate start = LocalDate.parse(medication.startDate);
+            LocalDate end = LocalDate.parse(medication.endDate);
+            return !today.isBefore(start) && !today.isAfter(end);
+        } catch (DateTimeParseException exception) {
+            return false;
+        }
     }
 
     private static JSONArray optionalDoseArray(JSONObject json, String key) throws ApiException {
@@ -1251,6 +1330,37 @@ public final class HomeContracts {
         } catch (DateTimeParseException exception) {
             return null;
         }
+    }
+
+    private static List<String> ocrTimingSlots(JSONObject item) {
+        if (item == null || !item.has("timing_slots") || item.isNull("timing_slots")) {
+            return null;
+        }
+        Object value = item.opt("timing_slots");
+        if (!(value instanceof JSONArray)) {
+            return null;
+        }
+        JSONArray array = (JSONArray) value;
+        List<String> slots = new ArrayList<>();
+        for (int index = 0; index < array.length(); index++) {
+            Object slot = array.opt(index);
+            if (!(slot instanceof String) || !knownServerSlot((String) slot) || slots.contains(slot)) {
+                continue;
+            }
+            slots.add((String) slot);
+        }
+        return slots;
+    }
+
+    private static Long ocrMealOffset(JSONObject item) {
+        if (item == null || !item.has("meal_offset_min") || item.isNull("meal_offset_min")) {
+            return null;
+        }
+        Object value = item.opt("meal_offset_min");
+        if (!(value instanceof Number)) {
+            return null;
+        }
+        return ((Number) value).longValue();
     }
 
     private static boolean knownServerSlot(String slot) {

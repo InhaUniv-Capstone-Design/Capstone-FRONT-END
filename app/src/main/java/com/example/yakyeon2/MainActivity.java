@@ -9,6 +9,7 @@ import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.net.Uri;
 import android.os.Build;
+import android.provider.MediaStore;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -24,6 +25,7 @@ import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.content.FileProvider;
 import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
@@ -70,6 +72,7 @@ import com.example.yakyeon2.dev.ManualCheckGate;
 import com.example.yakyeon2.data.YakyeonSession;
 import com.example.yakyeon2.data.MedicationStore;
 import com.example.yakyeon2.data.EnvelopeDraft;
+import com.example.yakyeon2.fcm.BoxTakenRefresh;
 import com.example.yakyeon2.fcm.FcmRegistrar;
 import com.example.yakyeon2.fcm.YakyeonNotifications;
 import com.example.yakyeon2.main.MainScreens;
@@ -91,6 +94,7 @@ import com.example.yakyeon2.ui.ShortMessage;
 import com.example.yakyeon2.ui.YakyeonHeader;
 import com.example.yakyeon2.ui.YakyeonTextField;
 import com.google.android.material.bottomnavigation.BottomNavigationView;
+import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.google.android.material.snackbar.Snackbar;
 import com.google.android.material.color.MaterialColors;
 
@@ -117,6 +121,7 @@ public class MainActivity extends AppCompatActivity
     private static final String STATE_DEVICE_SERIAL = "state_device_serial";
     private static final String STATE_DEVICE_SECRET = "state_device_secret";
     private static final String STATE_DEVICE_PATIENT = "state_device_patient";
+    private static final String STATE_CAMERA_URI = "state_camera_uri";
     private static final String PROOF_SIGNUP = "signup";
     private static final String PROOF_FIND = "find-id";
     private static final String PROOF_RESET = "reset";
@@ -138,6 +143,7 @@ public class MainActivity extends AppCompatActivity
     private boolean accountRequestInFlight;
     private boolean notificationRequestInFlight;
     private boolean deviceRequestInFlight;
+    private boolean compartmentReleaseInFlight;
     private AuthContracts.PreparedTerms signupTerms;
     private long verificationId;
     private String verifiedPhone = "";
@@ -197,6 +203,14 @@ public class MainActivity extends AppCompatActivity
     private MainScreens.CareView pillboxView = MainScreens.CareView.LOADING;
     private CareContracts.Pillbox pillboxSnapshot;
     private String pillboxMessage;
+    private boolean listPillboxArmed;
+    private int listPillboxEpoch;
+    private MainScreens.CareView listPillboxView = MainScreens.CareView.LOADING;
+    private CareContracts.Pillbox listPillbox;
+    private Long serverSlotPrescriptionId;
+    private Integer serverSlotChoice;
+    private CareContracts.Pillbox serverSlotPillbox;
+    private boolean serverSlotBusy;
     private boolean homeArmed;
     private int homeEpoch;
     private MainScreens.CareView homeView = MainScreens.CareView.LOADING;
@@ -225,9 +239,20 @@ public class MainActivity extends AppCompatActivity
     private java.time.LocalDate historyFrom;
     private java.time.LocalDate historyTo;
     private Dialog serverAlarmDialog;
+    private Uri pendingCameraUri;
     private final ActivityResultLauncher<String> prescriptionImage = registerForActivityResult(
             new ActivityResultContracts.GetContent(),
             this::onPrescriptionChosen
+    );
+    private final ActivityResultLauncher<Uri> prescriptionCamera = registerForActivityResult(
+            new ActivityResultContracts.TakePicture(),
+            success -> {
+                Uri uri = pendingCameraUri;
+                pendingCameraUri = null;
+                if (success && uri != null) {
+                    onPrescriptionChosen(uri);
+                }
+            }
     );
     private final java.util.Set<Long> catchUpAsked = new java.util.HashSet<>();
     private HomeContracts.Dose pendingCatchUp;
@@ -336,6 +361,10 @@ public class MainActivity extends AppCompatActivity
             if (savedInstanceState.containsKey(STATE_DEVICE_PATIENT)) {
                 pendingDevicePatientId = savedInstanceState.getLong(STATE_DEVICE_PATIENT);
             }
+            String cameraUri = savedInstanceState.getString(STATE_CAMERA_URI);
+            if (cameraUri != null) {
+                pendingCameraUri = Uri.parse(cameraUri);
+            }
         }
         openPushIfPresent(getIntent());
     }
@@ -374,6 +403,9 @@ public class MainActivity extends AppCompatActivity
         outState.putString(STATE_DEVICE_SECRET, deviceSecretDraft == null ? "" : deviceSecretDraft);
         if (pendingDevicePatientId != null) {
             outState.putLong(STATE_DEVICE_PATIENT, pendingDevicePatientId);
+        }
+        if (pendingCameraUri != null) {
+            outState.putString(STATE_CAMERA_URI, pendingCameraUri.toString());
         }
     }
 
@@ -967,7 +999,22 @@ public class MainActivity extends AppCompatActivity
     }
 
     @Override
+    protected void onStart() {
+        super.onStart();
+        BoxTakenRefresh.attach(boxTakenHost);
+        Log.i("BoxTaken", "onStart listener=true");
+    }
+
+    @Override
+    protected void onStop() {
+        BoxTakenRefresh.detach(boxTakenHost);
+        Log.i("BoxTaken", "onStop listener=false");
+        super.onStop();
+    }
+
+    @Override
     protected void onDestroy() {
+        BoxTakenRefresh.detach(boxTakenHost);
         verificationHandler.removeCallbacks(verificationTick);
         verificationHandler.removeCallbacks(homeDateRollover);
         cancelDelayedPhoneConfirm();
@@ -1705,6 +1752,7 @@ public class MainActivity extends AppCompatActivity
         }
         if (!MedScreen.SLOT.equals(navigator.currentScreen())) {
             YakyeonRepositoryProvider.get().medications().cancelSlotAssign();
+            clearServerSlot();
         }
         if (SettingsScreens.PILLBOX.equals(navigator.currentScreen())
                 && !isSignedIn()
@@ -1768,6 +1816,7 @@ public class MainActivity extends AppCompatActivity
         if (isSignedIn() && MedScreen.HISTORY.equals(screen)) {
             ensureHistoryLoaded();
         }
+        syncListPillbox(screen);
 
         screenContainer.removeAllViews();
         View content;
@@ -1989,6 +2038,8 @@ public class MainActivity extends AppCompatActivity
                         prescriptionView(),
                         prescriptionMessage(),
                         prescriptionRows(),
+                        listPillboxView,
+                        listPillbox,
                         homeWrites,
                         this
                 );
@@ -2002,6 +2053,16 @@ public class MainActivity extends AppCompatActivity
             return MedScreens.edit(this, store, session, this);
         }
         if (MedScreen.SLOT.equals(screen)) {
+            if (serverSlotPrescriptionId != null && serverSlotPillbox != null) {
+                return MedScreens.serverSlot(
+                        this,
+                        prescriptionFor(serverSlotPrescriptionId),
+                        serverSlotPillbox,
+                        serverSlotChoice,
+                        serverSlotBusy,
+                        this
+                );
+            }
             return MedScreens.slot(this, store, session, this);
         }
         if (MedScreen.ALARM.equals(screen)) {
@@ -2419,6 +2480,10 @@ public class MainActivity extends AppCompatActivity
     }
 
     private boolean returnedFromBackground;
+    private long doseSurfacesReloadedAt;
+    private long ignoreBoxTakenUntil;
+    private boolean boxTakenWhileWriting;
+    private final BoxTakenRefresh.Host boxTakenHost = this::onBoxTakenRefresh;
 
     @Override
     protected void onPause() {
@@ -2429,6 +2494,10 @@ public class MainActivity extends AppCompatActivity
     @Override
     protected void onResume() {
         super.onResume();
+        boolean pendingBoxTaken = BoxTakenRefresh.consumePending();
+        Log.i("BoxTaken", "onResume pendingConsumed=" + pendingBoxTaken
+                + " fromBackground=" + returnedFromBackground
+                + " signedIn=" + isSignedIn());
         armHomeDateWatch();
         boolean dateChanged = noteHomeDate();
         if (!returnedFromBackground || !isSignedIn() || !isAlive()) {
@@ -2448,17 +2517,17 @@ public class MainActivity extends AppCompatActivity
 
     private void reloadVisibleShareScope() {
         String screen = navigator.currentScreen();
-        if (needsServerHome(screen)) {
-            homeArmed = false;
-            ensureHomeLoaded();
-        }
-        if (showingSchedule()) {
-            scheduleLoaded = false;
-            ensureScheduleLoaded();
-        }
-        if (MedScreen.HISTORY.equals(screen)) {
-            historyLoaded = false;
-            ensureHistoryLoaded();
+        if (isSignedIn() && !doseSurfacesJustReloaded()) {
+            invalidateDoseCaches();
+            if (needsServerHome(screen)) {
+                ensureHomeLoaded();
+            }
+            if (showingSchedule()) {
+                ensureScheduleLoaded();
+            }
+            if (MedScreen.HISTORY.equals(screen)) {
+                ensureHistoryLoaded();
+            }
         }
         if (navigator.isMainArea() && navigator.currentTab() == ScreenId.GRAPH) {
             graphArmed = false;
@@ -2646,6 +2715,7 @@ public class MainActivity extends AppCompatActivity
         homeNameRequested = false;
         devicePanel = null;
         deviceWritesAllowed = false;
+        compartmentReleaseInFlight = false;
         deviceStatusMessage = null;
         clearDeviceDraft();
         settingsPatientId = null;
@@ -4445,11 +4515,19 @@ public class MainActivity extends AppCompatActivity
                         partial.append(getString(R.string.care_share_withheld));
                     } else {
                         try {
-                            HomeApi.assignCompartment(
+                            org.json.JSONObject assigned = HomeApi.assignCompartment(
                                     getApplicationContext(),
                                     created.prescriptionId,
                                     prepared.compartmentNo
                             );
+                            CareContracts.Assignment assignment = CareContracts.readAssignment(assigned);
+                            if (!CareContracts.assignmentCompleted(
+                                    assignment,
+                                    created.prescriptionId,
+                                    prepared.compartmentNo
+                            )) {
+                                throw ApiException.response(201);
+                            }
                         } catch (ApiException exception) {
                             if (exception.endsSession()) {
                                 throw exception;
@@ -4478,6 +4556,9 @@ public class MainActivity extends AppCompatActivity
                     if (!MedScreen.LIST.equals(navigator.currentScreen())) {
                         showRegisteredMedications();
                     }
+                    if (prepared.compartmentNo != null && !missingPillbox[0]) {
+                        listPillboxArmed = false;
+                    }
                     reloadServerSurfaces();
                     if (missingPillbox[0]) {
                         showUnregisteredPillbox();
@@ -4497,7 +4578,51 @@ public class MainActivity extends AppCompatActivity
 
     @Override
     public void capturePrescription() {
-        prescriptionImage.launch("image/*");
+        new MaterialAlertDialogBuilder(this, R.style.ThemeOverlay_Yakyeon_Dialog)
+                .setTitle(R.string.med_capture_title)
+                .setItems(
+                        new CharSequence[] {
+                                getString(R.string.med_capture_camera),
+                                getString(R.string.med_capture_gallery)
+                        },
+                        (dialog, which) -> {
+                            if (which == 0) {
+                                openPrescriptionCamera();
+                            } else {
+                                prescriptionImage.launch("image/*");
+                            }
+                        }
+                )
+                .show();
+    }
+
+    private void openPrescriptionCamera() {
+        java.io.File dir = new java.io.File(getCacheDir(), "camera");
+        if (!dir.exists() && !dir.mkdirs()) {
+            showMessage(getString(R.string.med_camera_unavailable));
+            return;
+        }
+        java.io.File file = new java.io.File(dir, "prescription.jpg");
+        try {
+            if (file.exists() && !file.delete()) {
+                showMessage(getString(R.string.med_camera_unavailable));
+                return;
+            }
+            if (!file.createNewFile()) {
+                showMessage(getString(R.string.med_camera_unavailable));
+                return;
+            }
+        } catch (java.io.IOException exception) {
+            showMessage(getString(R.string.med_camera_unavailable));
+            return;
+        }
+        Intent probe = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
+        if (probe.resolveActivity(getPackageManager()) == null) {
+            showMessage(getString(R.string.med_camera_unavailable));
+            return;
+        }
+        pendingCameraUri = FileProvider.getUriForFile(this, getPackageName() + ".fileprovider", file);
+        prescriptionCamera.launch(pendingCameraUri);
     }
 
     @Override
@@ -4595,6 +4720,648 @@ public class MainActivity extends AppCompatActivity
                 runOnUiThread(() -> showApiFailure(getString(R.string.med_alarm_title), exception));
             }
         });
+    }
+
+    @Override
+    public void openServerCompartment(long prescriptionId) {
+        if (serverSlotBusy) {
+            return;
+        }
+        if (!homeWrites) {
+            showMessage(getString(R.string.med_readonly));
+            return;
+        }
+        if (prescriptionFor(prescriptionId) == null) {
+            String waiting = prescriptionMessage();
+            showMessage(waiting == null || waiting.isEmpty()
+                    ? getString(R.string.home_loading)
+                    : waiting);
+            return;
+        }
+        serverSlotBusy = true;
+        showProgress(getString(R.string.med_change_slot));
+        ApiClient.execute(() -> {
+            try {
+                PatientGate gate = gatePatients();
+                if (gate.blocked != null) {
+                    runOnUiThread(() -> finishSlotNotice(gate.blocked));
+                    return;
+                }
+                if (!CareContracts.writesAllowed(gate.patient)) {
+                    runOnUiThread(() -> finishSlotNotice(getString(R.string.med_readonly)));
+                    return;
+                }
+                if (CareContracts.shareWithheld(gate.patient, CareContracts.DEVICE_EVENT)) {
+                    runOnUiThread(() -> finishSlotNotice(getString(R.string.care_share_withheld)));
+                    return;
+                }
+                CareContracts.Pillbox loaded = CareApi.pillbox(getApplicationContext(), gate.patient.patientId);
+                runOnUiThread(() -> {
+                    finishServerSlotRequest();
+                    if (!isAlive() || !isSignedIn()) {
+                        return;
+                    }
+                    publishListPillbox(loaded);
+                    if (CareContracts.assignmentAmbiguous(loaded, prescriptionId)) {
+                        showMessage(getString(R.string.api_response_error));
+                        refreshOpenList();
+                        return;
+                    }
+                    CareContracts.Compartment current = CareContracts.compartmentForPrescription(
+                            loaded,
+                            prescriptionId
+                    );
+                    if (current == null && !CareContracts.hasEmptyCompartment(loaded)) {
+                        showMessage(getString(R.string.med_slot_none_available));
+                        refreshOpenList();
+                        return;
+                    }
+                    serverSlotPillbox = loaded;
+                    serverSlotPrescriptionId = prescriptionId;
+                    serverSlotChoice = current != null && CareContracts.compartmentNoAllowed(current.compartmentNo)
+                            ? (int) current.compartmentNo
+                            : null;
+                    openScreen(MedScreen.SLOT);
+                });
+            } catch (ApiException exception) {
+                runOnUiThread(() -> {
+                    finishServerSlotRequest();
+                    if (!isAlive() || !isSignedIn()) {
+                        return;
+                    }
+                    if (ApiCodes.DEVICE_NOT_FOUND.equals(exception.code())) {
+                        forgetLocalPillbox();
+                        publishListPillboxAbsent();
+                        showMessage(getString(R.string.pillbox_slot_blocked));
+                        refreshOpenList();
+                        return;
+                    }
+                    showApiFailure(getString(R.string.med_change_slot), exception);
+                });
+            }
+        });
+    }
+
+    @Override
+    public void chooseServerCompartment(int compartmentNo) {
+        if (serverSlotBusy || serverSlotPillbox == null || serverSlotPrescriptionId == null) {
+            return;
+        }
+        CareContracts.Compartment compartment = CareContracts.compartmentByNo(serverSlotPillbox, compartmentNo);
+        if (!CareContracts.compartmentSelectable(compartment, serverSlotPrescriptionId)) {
+            showMessage(getString(R.string.pillbox_slot_full));
+            return;
+        }
+        if (serverSlotChoice != null && serverSlotChoice == compartmentNo) {
+            serverSlotChoice = null;
+        } else {
+            serverSlotChoice = compartmentNo;
+        }
+        refresh();
+    }
+
+    @Override
+    public void confirmServerCompartment() {
+        if (serverSlotBusy || serverSlotPrescriptionId == null || serverSlotPillbox == null) {
+            return;
+        }
+        long prescriptionId = serverSlotPrescriptionId;
+        Integer choice = serverSlotChoice;
+        CareContracts.Compartment current = CareContracts.compartmentForPrescription(
+                serverSlotPillbox,
+                prescriptionId
+        );
+        if (choice != null && current != null && current.compartmentNo == choice) {
+            clearServerSlot();
+            popTo(MedScreen.LIST);
+            return;
+        }
+        if (current != null
+                && !CareContracts.EMPTY.equals(current.state)
+                && (current.mappingId == null || !CareContracts.canRelease(current))) {
+            restoreSlotChoice(prescriptionId);
+            showMessage(getString(R.string.api_response_error));
+            return;
+        }
+        if (choice == null) {
+            if (current == null || CareContracts.EMPTY.equals(current.state)) {
+                clearServerSlot();
+                popTo(MedScreen.LIST);
+                return;
+            }
+            long mappingId = current.mappingId;
+            serverSlotBusy = true;
+            lockSlotSaveButton();
+            showProgress(getString(R.string.med_change_slot));
+            CareContracts.Pillbox known = serverSlotPillbox;
+            ApiClient.execute(() -> {
+                try {
+                    PatientGate gate = gatePatients();
+                    if (gate.blocked != null) {
+                        runOnUiThread(() -> finishSlotRestore(prescriptionId, gate.blocked));
+                        return;
+                    }
+                    if (!CareContracts.writesAllowed(gate.patient)) {
+                        runOnUiThread(() -> finishSlotRestore(prescriptionId, getString(R.string.med_readonly)));
+                        return;
+                    }
+                    if (CareContracts.shareWithheld(gate.patient, CareContracts.DEVICE_EVENT)) {
+                        runOnUiThread(() -> finishSlotRestore(
+                                prescriptionId,
+                                getString(R.string.care_share_withheld)
+                        ));
+                        return;
+                    }
+                    SlotPlacement placement = releaseOnlyServerCompartment(
+                            gate.patient.patientId,
+                            mappingId,
+                            known
+                    );
+                    runOnUiThread(() -> applySlotPlacement(prescriptionId, placement));
+                } catch (ApiException exception) {
+                    runOnUiThread(() -> {
+                        finishServerSlotRequest();
+                        restoreSlotChoice(prescriptionId);
+                        if (isAlive()) {
+                            showApiFailure(getString(R.string.med_change_slot), exception);
+                        }
+                    });
+                }
+            });
+            return;
+        }
+        int compartmentNo = choice;
+        CareContracts.Compartment target = CareContracts.compartmentByNo(serverSlotPillbox, compartmentNo);
+        if (!CareContracts.compartmentSelectable(target, prescriptionId)) {
+            showMessage(getString(R.string.pillbox_slot_full));
+            return;
+        }
+        Long releaseMappingId = null;
+        Long restoreNo = null;
+        if (current != null && !CareContracts.EMPTY.equals(current.state)) {
+            restoreNo = current.compartmentNo;
+            releaseMappingId = current.mappingId;
+        }
+        serverSlotBusy = true;
+        lockSlotSaveButton();
+        showProgress(getString(R.string.med_change_slot));
+        Long mappingToRelease = releaseMappingId;
+        Long compartmentToRestore = restoreNo;
+        ApiClient.execute(() -> {
+            try {
+                PatientGate gate = gatePatients();
+                if (gate.blocked != null) {
+                    runOnUiThread(() -> finishSlotRestore(prescriptionId, gate.blocked));
+                    return;
+                }
+                if (!CareContracts.writesAllowed(gate.patient)) {
+                    runOnUiThread(() -> finishSlotRestore(prescriptionId, getString(R.string.med_readonly)));
+                    return;
+                }
+                if (CareContracts.shareWithheld(gate.patient, CareContracts.DEVICE_EVENT)) {
+                    runOnUiThread(() -> finishSlotRestore(
+                            prescriptionId,
+                            getString(R.string.care_share_withheld)
+                    ));
+                    return;
+                }
+                SlotPlacement placement = assignServerCompartment(
+                        gate.patient.patientId,
+                        prescriptionId,
+                        compartmentNo,
+                        mappingToRelease,
+                        compartmentToRestore,
+                        serverSlotPillbox
+                );
+                runOnUiThread(() -> applySlotPlacement(prescriptionId, placement));
+            } catch (ApiException exception) {
+                runOnUiThread(() -> {
+                    finishServerSlotRequest();
+                    restoreSlotChoice(prescriptionId);
+                    if (isAlive()) {
+                        showApiFailure(getString(R.string.med_change_slot), exception);
+                    }
+                });
+            }
+        });
+    }
+
+    private void finishSlotRestore(long prescriptionId, String message) {
+        finishServerSlotRequest();
+        restoreSlotChoice(prescriptionId);
+        if (!isAlive()) {
+            return;
+        }
+        if (message != null && !message.isEmpty()) {
+            showMessage(message);
+        }
+    }
+
+    @Override
+    public void releaseCompartment(long mappingId) {
+        if (compartmentReleaseInFlight || !isSignedIn()) {
+            return;
+        }
+        if (!deviceWritesAllowed) {
+            showMessage(getString(R.string.pillbox_read_only));
+            return;
+        }
+        CareContracts.Compartment current = CareContracts.compartmentForMapping(pillboxSnapshot, mappingId);
+        if (!CareContracts.canRelease(current)) {
+            return;
+        }
+        compartmentReleaseInFlight = true;
+        showProgress(getString(R.string.pillbox_release));
+        Long patientId = settingsPatientId;
+        CareContracts.Pillbox known = pillboxSnapshot;
+        ApiClient.execute(() -> {
+            try {
+                try {
+                    CareApi.releaseCompartment(getApplicationContext(), mappingId);
+                } catch (ApiException exception) {
+                    if (exception.endsSession() || !mappingAlreadyGone(exception)) {
+                        throw exception;
+                    }
+                }
+                CareContracts.Pillbox fresh = patientId == null ? null : readPillboxOrNull(patientId);
+                CareContracts.Pillbox next = fresh != null
+                        ? fresh
+                        : CareContracts.clearMapping(known, mappingId);
+                runOnUiThread(() -> finishCompartmentRelease(next, null));
+            } catch (ApiException exception) {
+                runOnUiThread(() -> finishCompartmentRelease(null, exception));
+            }
+        });
+    }
+
+    private void finishCompartmentRelease(CareContracts.Pillbox next, ApiException error) {
+        compartmentReleaseInFlight = false;
+        clearProgress();
+        if (!isAlive() || !isSignedIn()) {
+            return;
+        }
+        if (error != null) {
+            showApiFailure(getString(R.string.pillbox_release), error);
+            return;
+        }
+        if (next != null) {
+            publishAssignedPillbox(next);
+        }
+        showMessage(getString(R.string.pillbox_release_done));
+        invalidateDoseCaches();
+        ensureHomeLoaded();
+        if (showingSchedule()) {
+            ensureScheduleLoaded();
+        }
+        if (MedScreen.HISTORY.equals(navigator.currentScreen())) {
+            ensureHistoryLoaded();
+        }
+    }
+
+    private static boolean mappingAlreadyGone(ApiException exception) {
+        return ApiCodes.COMPARTMENT_MAPPING_NOT_FOUND.equals(exception.code())
+                || ApiCodes.MAPPING_ALREADY_ENDED.equals(exception.code());
+    }
+
+    private void applySlotPlacement(long prescriptionId, SlotPlacement placement) {
+        finishServerSlotRequest();
+        if (!isAlive() || !isSignedIn()) {
+            return;
+        }
+        if (placement.pillbox != null) {
+            publishAssignedPillbox(placement.pillbox);
+            if (serverSlotPrescriptionId != null && serverSlotPrescriptionId == prescriptionId) {
+                serverSlotPillbox = placement.pillbox;
+                CareContracts.Compartment now = CareContracts.compartmentForPrescription(
+                        placement.pillbox,
+                        prescriptionId
+                );
+                serverSlotChoice = now != null && CareContracts.compartmentNoAllowed(now.compartmentNo)
+                        ? (int) now.compartmentNo
+                        : null;
+            }
+        } else if (placement.error == null) {
+            listPillboxArmed = false;
+        }
+        if (placement.error != null) {
+            if (MedScreen.SLOT.equals(navigator.currentScreen())) {
+                refresh();
+            } else {
+                refreshOpenList();
+            }
+            showApiFailure(getString(R.string.med_change_slot), placement.error);
+            return;
+        }
+        clearServerSlot();
+        if (MedScreen.SLOT.equals(navigator.currentScreen())) {
+            popTo(MedScreen.LIST);
+        } else {
+            refreshOpenList();
+        }
+        showMessage(slotSavedMessage(placement.pillbox, prescriptionId));
+        invalidateDoseCaches();
+        ensureHomeLoaded();
+        if (showingSchedule()) {
+            ensureScheduleLoaded();
+        }
+        if (MedScreen.HISTORY.equals(navigator.currentScreen())) {
+            ensureHistoryLoaded();
+        }
+    }
+
+    private String slotSavedMessage(CareContracts.Pillbox pillbox, long prescriptionId) {
+        CareContracts.Compartment placed = CareContracts.compartmentForPrescription(pillbox, prescriptionId);
+        if (placed == null || CareContracts.EMPTY.equals(placed.state)) {
+            return getString(R.string.pillbox_release_done);
+        }
+        return getString(R.string.med_slot_server_saved);
+    }
+
+    private void lockSlotSaveButton() {
+        View done = findViewById(R.id.button_slot_done);
+        if (done != null) {
+            done.setEnabled(false);
+        }
+    }
+
+    private void restoreSlotChoice(long prescriptionId) {
+        if (serverSlotPillbox == null) {
+            return;
+        }
+        CareContracts.Compartment now = CareContracts.compartmentForPrescription(
+                serverSlotPillbox,
+                prescriptionId
+        );
+        serverSlotChoice = now != null && CareContracts.compartmentNoAllowed(now.compartmentNo)
+                ? (int) now.compartmentNo
+                : null;
+        if (MedScreen.SLOT.equals(navigator.currentScreen())) {
+            refresh();
+        }
+    }
+
+    private SlotPlacement releaseOnlyServerCompartment(
+            long patientId,
+            long mappingId,
+            CareContracts.Pillbox known
+    ) throws ApiException {
+        try {
+            CareApi.releaseCompartment(getApplicationContext(), mappingId);
+        } catch (ApiException exception) {
+            if (exception.endsSession()) {
+                throw exception;
+            }
+            if (!mappingAlreadyGone(exception)) {
+                CareContracts.Pillbox fresh = readPillboxOrNull(patientId);
+                return new SlotPlacement(fresh != null ? fresh : known, exception);
+            }
+        }
+        CareContracts.Pillbox fresh = readPillboxOrNull(patientId);
+        return new SlotPlacement(
+                fresh != null ? fresh : CareContracts.clearMapping(known, mappingId),
+                null
+        );
+    }
+
+    private SlotPlacement assignServerCompartment(
+            long patientId,
+            long prescriptionId,
+            int compartmentNo,
+            Long releaseMappingId,
+            Long restoreNo,
+            CareContracts.Pillbox knownPillbox
+    ) throws ApiException {
+        boolean released = false;
+        if (releaseMappingId != null) {
+            try {
+                CareApi.releaseCompartment(getApplicationContext(), releaseMappingId);
+                released = true;
+            } catch (ApiException exception) {
+                if (exception.endsSession()) {
+                    throw exception;
+                }
+                if (!ApiCodes.COMPARTMENT_MAPPING_NOT_FOUND.equals(exception.code())
+                        && !ApiCodes.MAPPING_ALREADY_ENDED.equals(exception.code())) {
+                    return new SlotPlacement(null, exception);
+                }
+            }
+        }
+        try {
+            org.json.JSONObject body = CareApi.assignCompartment(
+                    getApplicationContext(),
+                    prescriptionId,
+                    compartmentNo
+            );
+            CareContracts.Assignment assignment = CareContracts.readAssignment(body);
+            if (assignment.prescriptionId != prescriptionId || assignment.compartmentNo != compartmentNo) {
+                throw ApiException.response(201);
+            }
+            if (!CareContracts.ACTIVE.equals(assignment.status)) {
+                return new SlotPlacement(readPillboxOrNull(patientId), ApiException.response(201));
+            }
+            CareContracts.Pillbox fresh = readPillboxOrNull(patientId);
+            Long releasedNo = released ? restoreNo : null;
+            return new SlotPlacement(
+                    CareContracts.applyActiveAssignment(
+                            fresh != null ? fresh : knownPillbox,
+                            assignment,
+                            releasedNo
+                    ),
+                    null
+            );
+        } catch (ApiException exception) {
+            if (exception.endsSession()) {
+                throw exception;
+            }
+            if (exception.failure() == ApiFailure.Kind.RESPONSE) {
+                CareContracts.Pillbox fresh = readPillboxOrNull(patientId);
+                if (placementMatches(fresh, prescriptionId, compartmentNo)) {
+                    return new SlotPlacement(fresh, null);
+                }
+            }
+            if (released && restoreNo != null) {
+                restoreServerCompartment(prescriptionId, restoreNo);
+            }
+            return new SlotPlacement(readPillboxOrNull(patientId), exception);
+        }
+    }
+
+    private boolean restoreServerCompartment(long prescriptionId, long compartmentNo) throws ApiException {
+        try {
+            org.json.JSONObject body = CareApi.assignCompartment(
+                    getApplicationContext(),
+                    prescriptionId,
+                    compartmentNo
+            );
+            return CareContracts.assignmentCompleted(
+                    CareContracts.readAssignment(body),
+                    prescriptionId,
+                    compartmentNo
+            );
+        } catch (ApiException exception) {
+            if (exception.endsSession()) {
+                throw exception;
+            }
+            return false;
+        }
+    }
+
+    private CareContracts.Pillbox readPillboxOrNull(long patientId) throws ApiException {
+        try {
+            return CareApi.pillbox(getApplicationContext(), patientId);
+        } catch (ApiException exception) {
+            if (exception.endsSession()) {
+                throw exception;
+            }
+            return null;
+        }
+    }
+
+    private static boolean placementMatches(
+            CareContracts.Pillbox pillbox,
+            long prescriptionId,
+            int compartmentNo
+    ) {
+        if (pillbox == null || CareContracts.assignmentAmbiguous(pillbox, prescriptionId)) {
+            return false;
+        }
+        CareContracts.Compartment placed = CareContracts.compartmentForPrescription(pillbox, prescriptionId);
+        return placed != null
+                && placed.compartmentNo == compartmentNo
+                && CareContracts.ACTIVE.equals(placed.state);
+    }
+
+    private void publishAssignedPillbox(CareContracts.Pillbox snapshot) {
+        publishListPillbox(snapshot);
+        pillboxEpoch++;
+        pillboxView = MainScreens.CareView.READY;
+        pillboxSnapshot = snapshot;
+        pillboxMessage = null;
+        if (navigator.isMainArea() && navigator.currentTab() == ScreenId.PILLBOX) {
+            refresh();
+        }
+    }
+
+    private void finishServerSlotRequest() {
+        serverSlotBusy = false;
+        clearProgress();
+    }
+
+    private void finishSlotNotice(String message) {
+        finishServerSlotRequest();
+        if (!isAlive()) {
+            return;
+        }
+        if (message != null && !message.isEmpty()) {
+            showMessage(message);
+        }
+    }
+
+    private void clearServerSlot() {
+        serverSlotPrescriptionId = null;
+        serverSlotChoice = null;
+        serverSlotPillbox = null;
+    }
+
+    private void refreshOpenList() {
+        if (isMedicationListSurface(navigator.currentScreen())) {
+            refresh();
+        }
+    }
+
+    private void syncListPillbox(String screen) {
+        boolean list = isSignedIn() && isMedicationListSurface(screen);
+        if (!list) {
+            listPillboxArmed = false;
+            return;
+        }
+        ensureListPillbox();
+    }
+
+    private void ensureListPillbox() {
+        if (!isSignedIn() || listPillboxArmed) {
+            return;
+        }
+        listPillboxArmed = true;
+        int epoch = ++listPillboxEpoch;
+        if (listPillbox == null) {
+            listPillboxView = MainScreens.CareView.LOADING;
+        }
+        String accountType = AuthTokenStore.accountType(this);
+        ApiClient.execute(() -> {
+            try {
+                java.util.List<SettingsContracts.ManagedPatient> patients = SettingsApi.managedPatients(
+                        getApplicationContext()
+                );
+                SettingsContracts.ResolvedPatient target = SettingsContracts.resolveForSettings(
+                        patients,
+                        accountType
+                );
+                if (target.resolution != SettingsContracts.Resolution.ONE) {
+                    runOnUiThread(() -> applyListPillbox(epoch, MainScreens.CareView.BLOCKED, null));
+                    return;
+                }
+                SettingsContracts.ManagedPatient patient = findPatient(patients, target.patientId);
+                if (CareContracts.shareWithheld(patient, CareContracts.DEVICE_EVENT)) {
+                    runOnUiThread(() -> applyListPillbox(epoch, MainScreens.CareView.BLOCKED, null));
+                    return;
+                }
+                CareContracts.Pillbox loaded = CareApi.pillbox(getApplicationContext(), target.patientId);
+                runOnUiThread(() -> applyListPillbox(epoch, MainScreens.CareView.READY, loaded));
+            } catch (ApiException exception) {
+                runOnUiThread(() -> {
+                    if (!isAlive() || epoch != listPillboxEpoch) {
+                        return;
+                    }
+                    if (exception.endsSession()) {
+                        applyListPillbox(epoch, MainScreens.CareView.FAILED, null);
+                        showApiFailure(getString(R.string.med_list_title), exception);
+                        return;
+                    }
+                    if (ApiCodes.DEVICE_NOT_FOUND.equals(exception.code())) {
+                        forgetLocalPillbox();
+                        applyListPillbox(epoch, MainScreens.CareView.ABSENT, null);
+                        return;
+                    }
+                    MainScreens.CareView failed = ApiCodes.SHARE_NOT_GRANTED.equals(exception.code())
+                            ? MainScreens.CareView.BLOCKED
+                            : MainScreens.CareView.FAILED;
+                    applyListPillbox(epoch, failed, null);
+                });
+            }
+        });
+    }
+
+    private void applyListPillbox(int epoch, MainScreens.CareView view, CareContracts.Pillbox snapshot) {
+        if (!isAlive() || epoch != listPillboxEpoch) {
+            return;
+        }
+        listPillboxView = view;
+        listPillbox = snapshot;
+        refreshOpenList();
+    }
+
+    private void publishListPillbox(CareContracts.Pillbox snapshot) {
+        listPillboxEpoch++;
+        listPillboxView = MainScreens.CareView.READY;
+        listPillbox = snapshot;
+        listPillboxArmed = isMedicationListSurface(navigator.currentScreen());
+    }
+
+    private void publishListPillboxAbsent() {
+        listPillboxEpoch++;
+        listPillboxView = MainScreens.CareView.ABSENT;
+        listPillbox = null;
+        listPillboxArmed = isMedicationListSurface(navigator.currentScreen());
+    }
+
+    private void resetListPillbox() {
+        listPillboxArmed = false;
+        listPillboxEpoch++;
+        listPillboxView = MainScreens.CareView.LOADING;
+        listPillbox = null;
+        serverSlotBusy = false;
+        clearServerSlot();
     }
 
     @Override
@@ -4816,12 +5583,18 @@ public class MainActivity extends AppCompatActivity
                         return;
                     }
                     showMessage(notice);
+                    boxTakenWhileWriting = false;
                     reloadServerSurfaces();
+                    ignoreBoxTakenUntil = android.os.SystemClock.elapsedRealtime() + 3000L;
                 });
             } catch (ApiException exception) {
                 runOnUiThread(() -> {
                     finishHomeWrite(null);
                     showApiFailure(getString(R.string.tab_home), exception);
+                    if (boxTakenWhileWriting) {
+                        boxTakenWhileWriting = false;
+                        onBoxTakenRefresh();
+                    }
                 });
             }
         });
@@ -4853,17 +5626,55 @@ public class MainActivity extends AppCompatActivity
         }
     }
 
-    private void reloadServerSurfaces() {
+    private void onBoxTakenRefresh() {
+        if (!isAlive() || !isSignedIn()) {
+            Log.i("BoxTaken", "onBoxTakenRefresh skip alive=" + isAlive() + " signedIn=" + isSignedIn());
+            return;
+        }
+        if (homeWriteBusy) {
+            boxTakenWhileWriting = true;
+            Log.i("BoxTaken", "onBoxTakenRefresh defer homeWriteBusy");
+            return;
+        }
+        long now = android.os.SystemClock.elapsedRealtime();
+        if (now < ignoreBoxTakenUntil || doseSurfacesJustReloaded()) {
+            Log.i("BoxTaken", "onBoxTakenRefresh skip recentReload=" + doseSurfacesJustReloaded()
+                    + " ignoreUntil=" + (now < ignoreBoxTakenUntil));
+            return;
+        }
+        Log.i("BoxTaken", "onBoxTakenRefresh");
+        reloadServerSurfaces();
+    }
+
+    private void invalidateDoseCaches() {
+        doseSurfacesReloadedAt = android.os.SystemClock.elapsedRealtime();
         homeArmed = false;
         scheduleLoaded = false;
         historyLoaded = false;
+    }
+
+    private boolean doseSurfacesJustReloaded() {
+        return android.os.SystemClock.elapsedRealtime() - doseSurfacesReloadedAt < 800L;
+    }
+
+    private void reloadServerSurfaces() {
+        Log.i("BoxTaken", "reloadServerSurfaces screen=" + navigator.currentScreen()
+                + " scheduleDate=" + scheduleDate
+                + " history=" + historyFrom + ".." + historyTo
+                + " historyStatus=" + historyStatus);
+        invalidateDoseCaches();
         ensureHomeLoaded();
         if (showingSchedule()) {
             ensureScheduleLoaded();
+        } else {
+            Log.i("BoxTaken", "schedule GET skipped screenClosed");
         }
         if (MedScreen.HISTORY.equals(navigator.currentScreen())) {
             ensureHistoryLoaded();
+        } else {
+            Log.i("BoxTaken", "history GET skipped screenClosed");
         }
+        Log.i("BoxTaken", "refresh after reload");
         refresh();
     }
 
@@ -4885,6 +5696,7 @@ public class MainActivity extends AppCompatActivity
 
     private void ensureHomeLoaded() {
         if (!isSignedIn() || homeArmed) {
+            Log.i("BoxTaken", "ensureHomeLoaded skip signedIn=" + isSignedIn() + " homeArmed=" + homeArmed);
             return;
         }
         homeArmed = true;
@@ -4895,6 +5707,8 @@ public class MainActivity extends AppCompatActivity
 
     private void ensureScheduleLoaded() {
         if (!isSignedIn() || scheduleLoaded) {
+            Log.i("BoxTaken", "ensureScheduleLoaded skip signedIn=" + isSignedIn()
+                    + " scheduleLoaded=" + scheduleLoaded);
             return;
         }
         if (scheduleDate == null) {
@@ -4908,6 +5722,8 @@ public class MainActivity extends AppCompatActivity
 
     private void ensureHistoryLoaded() {
         if (!isSignedIn() || historyLoaded) {
+            Log.i("BoxTaken", "ensureHistoryLoaded skip signedIn=" + isSignedIn()
+                    + " historyLoaded=" + historyLoaded);
             return;
         }
         historyLoaded = true;
@@ -5039,8 +5855,16 @@ public class MainActivity extends AppCompatActivity
             return HomeContracts.Section.withheld(getString(R.string.care_share_withheld));
         }
         try {
-            return HomeContracts.Section.ready(HomeApi.doses(getApplicationContext(), patient.patientId, today));
+            Log.i("BoxTaken", "GET " + HomeContracts.dosesPath(patient.patientId, today));
+            java.util.List<HomeContracts.Dose> doses = HomeApi.doses(
+                    getApplicationContext(),
+                    patient.patientId,
+                    today
+            );
+            logDoseRows("home", today, today, doses);
+            return HomeContracts.Section.ready(doses);
         } catch (ApiException exception) {
+            Log.i("BoxTaken", "home doses failed http=" + exception.status() + " code=" + exception.code());
             if (exception.endsSession()) {
                 throw exception;
             }
@@ -5085,6 +5909,7 @@ public class MainActivity extends AppCompatActivity
             String linkedPatientName
     ) {
         if (!isAlive() || epoch != homeEpoch) {
+            Log.i("BoxTaken", "applyHome skip stale epoch");
             return;
         }
         homeView = view;
@@ -5097,7 +5922,9 @@ public class MainActivity extends AppCompatActivity
         homeWrites = writes;
         homePatientId = patientId;
         homeLinkedPatientName = linkedPatientName;
-        if (needsServerHome(navigator.currentScreen())) {
+        boolean show = needsServerHome(navigator.currentScreen());
+        Log.i("BoxTaken", "applyHome refresh=" + show + " view=" + view);
+        if (show) {
             refresh();
         }
     }
@@ -5119,13 +5946,16 @@ public class MainActivity extends AppCompatActivity
                     ));
                     return;
                 }
+                Log.i("BoxTaken", "GET " + HomeContracts.dosesPath(gate.patient.patientId, date));
                 java.util.List<HomeContracts.Dose> doses = HomeApi.doses(
                         getApplicationContext(),
                         gate.patient.patientId,
                         date
                 );
+                logDoseRows("schedule", date, date, doses);
                 runOnUiThread(() -> applySchedule(epoch, MainScreens.CareView.READY, null, doses));
             } catch (ApiException exception) {
+                Log.i("BoxTaken", "schedule doses failed http=" + exception.status() + " code=" + exception.code());
                 runOnUiThread(() -> {
                     MainScreens.CareView view = ApiCodes.SHARE_NOT_GRANTED.equals(exception.code())
                             ? MainScreens.CareView.BLOCKED
@@ -5146,12 +5976,15 @@ public class MainActivity extends AppCompatActivity
             java.util.List<HomeContracts.Dose> doses
     ) {
         if (!isAlive() || epoch != scheduleEpoch) {
+            Log.i("BoxTaken", "applySchedule skip stale epoch");
             return;
         }
         scheduleView = view;
         scheduleMessage = message;
         scheduleDoses = doses;
-        if (showingSchedule()) {
+        boolean show = showingSchedule();
+        Log.i("BoxTaken", "applySchedule refresh=" + show + " view=" + view + " selected=" + scheduleDate);
+        if (show) {
             refresh();
         }
     }
@@ -5178,6 +6011,7 @@ public class MainActivity extends AppCompatActivity
                     ));
                     return;
                 }
+                Log.i("BoxTaken", "GET " + HomeContracts.historyPath(gate.patient.patientId, from, to, status));
                 java.util.List<HomeContracts.Dose> doses = HomeApi.doseHistory(
                         getApplicationContext(),
                         gate.patient.patientId,
@@ -5185,8 +6019,10 @@ public class MainActivity extends AppCompatActivity
                         to,
                         status
                 );
+                logDoseRows("history", from, to, doses);
                 runOnUiThread(() -> applyHistory(epoch, MainScreens.CareView.READY, null, doses));
             } catch (ApiException exception) {
+                Log.i("BoxTaken", "history doses failed http=" + exception.status() + " code=" + exception.code());
                 runOnUiThread(() -> {
                     MainScreens.CareView view = ApiCodes.SHARE_NOT_GRANTED.equals(exception.code())
                             ? MainScreens.CareView.BLOCKED
@@ -5210,13 +6046,47 @@ public class MainActivity extends AppCompatActivity
             java.util.List<HomeContracts.Dose> doses
     ) {
         if (!isAlive() || epoch != historyEpoch) {
+            Log.i("BoxTaken", "applyHistory skip stale epoch");
             return;
         }
         historyView = view;
         historyMessage = message;
         historyDoses = doses;
-        if (MedScreen.HISTORY.equals(navigator.currentScreen())) {
+        boolean show = MedScreen.HISTORY.equals(navigator.currentScreen());
+        Log.i("BoxTaken", "applyHistory refresh=" + show + " view=" + view
+                + " range=" + historyFrom + ".." + historyTo);
+        if (show) {
             refresh();
+        }
+    }
+
+    private static void logDoseRows(
+            String source,
+            java.time.LocalDate queryStart,
+            java.time.LocalDate queryEnd,
+            java.util.List<HomeContracts.Dose> doses
+    ) {
+        if (doses == null) {
+            Log.i("BoxTaken", source + " doses=null query=" + queryStart + ".." + queryEnd);
+            return;
+        }
+        Log.i("BoxTaken", source + " count=" + doses.size() + " query=" + queryStart + ".." + queryEnd);
+        java.time.Instant now = java.time.Instant.now();
+        for (HomeContracts.Dose dose : doses) {
+            if (dose == null) {
+                continue;
+            }
+            java.time.LocalDate day = HomeContracts.seoulDate(dose.scheduledAt);
+            boolean match = day != null && queryStart != null && queryEnd != null
+                    && !day.isBefore(queryStart) && !day.isAfter(queryEnd);
+            String shown = HomeContracts.scheduleStatus(dose, now);
+            Log.i("BoxTaken", source
+                    + " id=" + dose.scheduledDoseId
+                    + " at=" + dose.scheduledAt
+                    + " status=" + dose.status
+                    + " taken_at=" + (dose.takenAt == null ? "" : dose.takenAt)
+                    + " shown=" + shown
+                    + " queryMatch=" + match);
         }
     }
 
@@ -5272,6 +6142,7 @@ public class MainActivity extends AppCompatActivity
         historyStatus = null;
         historyFrom = null;
         historyTo = null;
+        resetListPillbox();
     }
 
     private void offerCatchUp() {
@@ -5443,6 +6314,18 @@ public class MainActivity extends AppCompatActivity
         return homePrescriptions == null ? null : homePrescriptions.message;
     }
 
+    private HomeContracts.Prescription prescriptionFor(long prescriptionId) {
+        if (homePrescriptions == null || homePrescriptions.value == null) {
+            return null;
+        }
+        for (HomeContracts.Prescription prescription : homePrescriptions.value) {
+            if (prescription.prescriptionId == prescriptionId) {
+                return prescription;
+            }
+        }
+        return null;
+    }
+
     private String hospitalFor(long prescriptionId) {
         if (homePrescriptions == null || homePrescriptions.value == null) {
             return "";
@@ -5518,6 +6401,16 @@ public class MainActivity extends AppCompatActivity
         private PatientGate(SettingsContracts.ManagedPatient patient, String blocked) {
             this.patient = patient;
             this.blocked = blocked;
+        }
+    }
+
+    private static final class SlotPlacement {
+        private final CareContracts.Pillbox pillbox;
+        private final ApiException error;
+
+        private SlotPlacement(CareContracts.Pillbox pillbox, ApiException error) {
+            this.pillbox = pillbox;
+            this.error = error;
         }
     }
 

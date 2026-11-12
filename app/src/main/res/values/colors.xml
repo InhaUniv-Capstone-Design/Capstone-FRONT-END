@@ -12,6 +12,7 @@
     <color name="yakyeon_card_line">#FFE5EBE8</color>
     <color name="yakyeon_mint">#FFEAF8F3</color>
     <color name="yakyeon_placeholder">#FF9AACA7</color>
+    <color name="yakyeon_icon_inactive">#FFC5D0CC</color>
     <color name="yakyeon_required">#FFF08E31</color>
     <color name="yakyeon_sheet">#FFF4FBF8</color>
     <!-- 2280:4170 홈, 2280:3592 가입 유형에서 확인 -->

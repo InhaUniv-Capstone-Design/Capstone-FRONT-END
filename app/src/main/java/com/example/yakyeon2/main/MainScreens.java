@@ -32,6 +32,7 @@ import com.example.yakyeon2.data.YakyeonSession;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.example.yakyeon2.navigation.DevSampleGate;
 import com.example.yakyeon2.navigation.MedScreen;
+import com.example.yakyeon2.ui.ConfirmDialog;
 import com.example.yakyeon2.ui.DrugGraphView;
 import com.example.yakyeon2.ui.YakyeonListRow;
 
@@ -73,6 +74,8 @@ public final class MainScreens {
         void back();
 
         void showPillboxTab();
+
+        void releaseCompartment(long mappingId);
 
         void exportClinicalShare();
     }
@@ -210,41 +213,31 @@ public final class MainScreens {
             interaction.setText(message);
             remainingEmpty.setText(message);
             remainingEmpty.setVisibility(View.VISIBLE);
-            paintServerSlot(root, R.id.slot_morning, R.id.icon_morning, R.drawable.ic_yakyeon_sun, null);
-            paintServerSlot(root, R.id.slot_lunch, R.id.icon_lunch, R.drawable.ic_yakyeon_sun, null);
-            paintServerSlot(root, R.id.slot_evening, R.id.icon_evening, R.drawable.ic_yakyeon_moon, null);
-            paintServerSlot(root, R.id.slot_bedtime, R.id.icon_bedtime, R.drawable.ic_yakyeon_moon, null);
+            paintHomeSlots(root, null, null, null, null);
             return root;
         }
+        LocalDate slotDate = LocalDate.now(ZoneId.of("Asia/Seoul"));
         if (summary == null || summary.kind != HomeContracts.Section.Kind.READY || summary.value == null) {
             String message = summary == null || summary.message == null
                     ? activity.getString(R.string.api_response_error)
                     : summary.message;
             progress.setText(message);
-            paintServerSlot(root, R.id.slot_morning, R.id.icon_morning, R.drawable.ic_yakyeon_sun, null);
-            paintServerSlot(root, R.id.slot_lunch, R.id.icon_lunch, R.drawable.ic_yakyeon_sun, null);
-            paintServerSlot(root, R.id.slot_evening, R.id.icon_evening, R.drawable.ic_yakyeon_moon, null);
-            paintServerSlot(root, R.id.slot_bedtime, R.id.icon_bedtime, R.drawable.ic_yakyeon_moon, null);
+            paintHomeSlots(root, summary, todayDoses, activeMeds, slotDate);
         } else {
             HomeContracts.HomeSummary value = summary.value;
             HomeContracts.SlotProgress slotProgress = HomeContracts.slotProgress(value.slots);
+            boolean settled = daySettled(summary, todayDoses);
+            int shownDone = settled ? slotProgress.scheduled : slotProgress.done;
             progress.setText(activity.getString(
                     R.string.home_progress,
-                    slotProgress.done,
+                    shownDone,
                     slotProgress.scheduled
             ));
             track.setWeightSum(slotProgress.scheduled <= 0 ? 1f : slotProgress.scheduled);
             LinearLayout.LayoutParams fillParams = (LinearLayout.LayoutParams) fill.getLayoutParams();
-            fillParams.weight = slotProgress.scheduled <= 0 ? 0f : slotProgress.done;
+            fillParams.weight = slotProgress.scheduled <= 0 ? 0f : shownDone;
             fill.setLayoutParams(fillParams);
-            paintServerSlot(root, R.id.slot_morning, R.id.icon_morning, R.drawable.ic_yakyeon_sun,
-                    HomeContracts.slotState(value.slots, HomeContracts.SLOT_MORNING));
-            paintServerSlot(root, R.id.slot_lunch, R.id.icon_lunch, R.drawable.ic_yakyeon_sun,
-                    HomeContracts.slotState(value.slots, HomeContracts.SLOT_LUNCH));
-            paintServerSlot(root, R.id.slot_evening, R.id.icon_evening, R.drawable.ic_yakyeon_moon,
-                    HomeContracts.slotState(value.slots, HomeContracts.SLOT_DINNER));
-            paintServerSlot(root, R.id.slot_bedtime, R.id.icon_bedtime, R.drawable.ic_yakyeon_moon,
-                    HomeContracts.slotState(value.slots, HomeContracts.SLOT_BEDTIME));
+            paintHomeSlots(root, summary, todayDoses, activeMeds, slotDate);
         }
         if (activeMeds == null || activeMeds.kind != HomeContracts.Section.Kind.READY || activeMeds.value == null) {
             taking.setText(activeMeds == null || activeMeds.message == null
@@ -400,12 +393,18 @@ public final class MainScreens {
         List<HomeDoseFocus.Entry> entries = new ArrayList<>();
         for (List<DoseRecord> group : groups.values()) {
             DoseRecord first = group.get(0);
-            boolean taken = true;
+            boolean open = false;
+            boolean anyMissed = false;
             StringBuilder names = new StringBuilder();
             for (DoseRecord record : group) {
                 DoseStatus status = MedicationRules.displayStatus(record, now);
-                if (status != DoseStatus.COMPLETED && status != DoseStatus.DELAYED) {
-                    taken = false;
+                boolean recorded = status == DoseStatus.COMPLETED || status == DoseStatus.DELAYED;
+                boolean missed = !recorded
+                        && now > record.getScheduledAtMillis() + MedicationRules.THREE_HOURS_MS;
+                if (!recorded && !missed) {
+                    open = true;
+                } else if (missed) {
+                    anyMissed = true;
                 }
                 String name = record.getMedicineName();
                 if (name != null && !name.trim().isEmpty()) {
@@ -415,6 +414,7 @@ public final class MainScreens {
                     names.append(name.trim());
                 }
             }
+            boolean taken = !open && !anyMissed;
             String place = first.getEnvelopeName() == null ? "" : first.getEnvelopeName().trim();
             if (names.length() > 0) {
                 place = place.isEmpty() ? names.toString() : place + " · " + names;
@@ -423,7 +423,8 @@ public final class MainScreens {
                     place,
                     first.getRound().name(),
                     first.getScheduledAtMillis(),
-                    taken
+                    taken,
+                    !open && anyMissed
             ));
         }
         return entries;
@@ -442,6 +443,7 @@ public final class MainScreens {
             boolean taken = HomeContracts.STATUS_NORMAL.equals(dose.status)
                     || HomeContracts.STATUS_DELAYED.equals(dose.status)
                     || (dose.takenAt != null && !dose.takenAt.isEmpty());
+            boolean missed = !taken && HomeContracts.STATUS_MISSED.equals(dose.status);
             StringBuilder drugs = new StringBuilder();
             if (dose.medications != null) {
                 for (HomeContracts.DoseDrug drug : dose.medications) {
@@ -458,7 +460,7 @@ public final class MainScreens {
             if (drugs.length() > 0) {
                 place = place.isEmpty() ? drugs.toString() : place + " · " + drugs;
             }
-            entries.add(new HomeDoseFocus.Entry(place, dose.timingSlot, at, taken));
+            entries.add(new HomeDoseFocus.Entry(place, dose.timingSlot, at, taken, missed));
         }
         return entries;
     }
@@ -545,19 +547,152 @@ public final class MainScreens {
         return slot == null ? "" : slot;
     }
 
+    private static void paintHomeSlots(
+            View root,
+            HomeContracts.Section<HomeContracts.HomeSummary> summary,
+            HomeContracts.Section<java.util.List<HomeContracts.Dose>> todayDoses,
+            HomeContracts.Section<java.util.List<HomeContracts.Medication>> activeMeds,
+            LocalDate today
+    ) {
+        paintServerSlot(root, R.id.slot_morning, R.id.icon_morning, R.drawable.ic_yakyeon_sun,
+                homeSlotIconState(summary, todayDoses, activeMeds, HomeContracts.SLOT_MORNING, today));
+        paintServerSlot(root, R.id.slot_lunch, R.id.icon_lunch, R.drawable.ic_yakyeon_sun,
+                homeSlotIconState(summary, todayDoses, activeMeds, HomeContracts.SLOT_LUNCH, today));
+        paintServerSlot(root, R.id.slot_evening, R.id.icon_evening, R.drawable.ic_yakyeon_moon,
+                homeSlotIconState(summary, todayDoses, activeMeds, HomeContracts.SLOT_DINNER, today));
+        paintServerSlot(root, R.id.slot_bedtime, R.id.icon_bedtime, R.drawable.ic_yakyeon_moon,
+                homeSlotIconState(summary, todayDoses, activeMeds, HomeContracts.SLOT_BEDTIME, today));
+    }
+
+    private static String homeSlotIconState(
+            HomeContracts.Section<HomeContracts.HomeSummary> summary,
+            HomeContracts.Section<java.util.List<HomeContracts.Dose>> todayDoses,
+            HomeContracts.Section<java.util.List<HomeContracts.Medication>> activeMeds,
+            String slot,
+            LocalDate today
+    ) {
+        boolean summaryReady = summary != null
+                && summary.kind == HomeContracts.Section.Kind.READY
+                && summary.value != null;
+        String summaryState = summaryReady
+                ? HomeContracts.slotState(summary.value.slots, slot)
+                : null;
+        boolean dosesReady = todayDoses != null
+                && todayDoses.kind == HomeContracts.Section.Kind.READY
+                && todayDoses.value != null;
+        boolean medicationsReady = activeMeds != null
+                && activeMeds.kind == HomeContracts.Section.Kind.READY
+                && activeMeds.value != null;
+        boolean scheduled = HomeContracts.timingSlotActive(
+                slot,
+                summaryState,
+                summaryReady,
+                dosesReady ? todayDoses.value : null,
+                dosesReady,
+                medicationsReady ? activeMeds.value : null,
+                medicationsReady,
+                today
+        );
+        if (!scheduled) {
+            return HomeContracts.STATE_NONE;
+        }
+        if (daySettled(summary, todayDoses) && !slotStillOpen(todayDoses, slot)) {
+            return HomeContracts.STATE_DONE;
+        }
+        if (summaryReady && summaryState != null && !HomeContracts.STATE_NONE.equals(summaryState)) {
+            return summaryState;
+        }
+        return HomeContracts.STATE_PENDING;
+    }
+
+    /** Every loaded dose today is taken or missed, and at least one dose exists. */
+    private static boolean daySettled(
+            HomeContracts.Section<HomeContracts.HomeSummary> summary,
+            HomeContracts.Section<java.util.List<HomeContracts.Dose>> todayDoses
+    ) {
+        boolean dosesReady = todayDoses != null
+                && todayDoses.kind == HomeContracts.Section.Kind.READY
+                && todayDoses.value != null;
+        if (dosesReady) {
+            if (todayDoses.value.isEmpty()) {
+                return false;
+            }
+            for (HomeContracts.Dose dose : todayDoses.value) {
+                if (!doseSettled(dose)) {
+                    return false;
+                }
+            }
+            return true;
+        }
+        boolean summaryReady = summary != null
+                && summary.kind == HomeContracts.Section.Kind.READY
+                && summary.value != null
+                && summary.value.slots != null;
+        if (!summaryReady) {
+            return false;
+        }
+        boolean any = false;
+        for (HomeContracts.SlotState slot : summary.value.slots) {
+            if (slot == null || HomeContracts.STATE_NONE.equals(slot.state)) {
+                continue;
+            }
+            any = true;
+            if (!HomeContracts.STATE_DONE.equals(slot.state)
+                    && !HomeContracts.STATE_MISSED.equals(slot.state)) {
+                return false;
+            }
+        }
+        return any;
+    }
+
+    private static boolean doseSettled(HomeContracts.Dose dose) {
+        if (dose == null) {
+            return true;
+        }
+        if (dose.takenAt != null && !dose.takenAt.isEmpty()) {
+            return true;
+        }
+        return HomeContracts.STATUS_NORMAL.equals(dose.status)
+                || HomeContracts.STATUS_DELAYED.equals(dose.status)
+                || HomeContracts.STATUS_MISSED.equals(dose.status);
+    }
+
+    private static boolean slotStillOpen(
+            HomeContracts.Section<java.util.List<HomeContracts.Dose>> todayDoses,
+            String slot
+    ) {
+        if (todayDoses == null
+                || todayDoses.kind != HomeContracts.Section.Kind.READY
+                || todayDoses.value == null) {
+            return false;
+        }
+        for (HomeContracts.Dose dose : todayDoses.value) {
+            if (dose != null && slot.equals(dose.timingSlot) && !doseSettled(dose)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private static void paintServerSlot(View root, int slotId, int iconId, int idleIcon, String state) {
         View slot = root.findViewById(slotId);
         ImageView icon = root.findViewById(iconId);
         boolean done = HomeContracts.STATE_DONE.equals(state);
         boolean missed = HomeContracts.STATE_MISSED.equals(state);
-        boolean hidden = state == null || HomeContracts.STATE_NONE.equals(state);
-        slot.setVisibility(hidden ? View.INVISIBLE : View.VISIBLE);
+        boolean scheduled = state != null && !HomeContracts.STATE_NONE.equals(state);
+        slot.setVisibility(View.VISIBLE);
+        slot.setAlpha(1f);
+        icon.clearColorFilter();
+        if (!scheduled) {
+            slot.setBackgroundResource(R.drawable.yakyeon_slot_inactive);
+            icon.setImageResource(idleIcon);
+            icon.setColorFilter(root.getResources().getColor(R.color.yakyeon_icon_inactive, null));
+            return;
+        }
         slot.setBackgroundResource(done ? R.drawable.yakyeon_slot_done : R.drawable.yakyeon_slot_idle);
         icon.setImageResource(done
                 ? R.drawable.ic_yakyeon_check
                 : (missed ? R.drawable.ic_settings_alert : idleIcon));
-        icon.clearColorFilter();
-        slot.setAlpha(1f);
         if (missed) {
             icon.setColorFilter(root.getResources().getColor(R.color.yakyeon_missed_text, null));
         }
@@ -1096,7 +1231,12 @@ public final class MainScreens {
                 CareContracts.occupiedCompartments(snapshot)
         ));
         for (int index = 0; index < snapshot.compartments.size(); index++) {
-            View row = serverSlot(activity, snapshot.compartments.get(index));
+            View row = serverSlot(
+                    activity,
+                    snapshot.compartments.get(index),
+                    writesAllowed,
+                    host
+            );
             if (index > 0) {
                 LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
                         LinearLayout.LayoutParams.MATCH_PARENT,
@@ -1124,7 +1264,12 @@ public final class MainScreens {
         return root;
     }
 
-    private static View serverSlot(AppCompatActivity activity, CareContracts.Compartment compartment) {
+    private static View serverSlot(
+            AppCompatActivity activity,
+            CareContracts.Compartment compartment,
+            boolean writesAllowed,
+            Host host
+    ) {
         View row = LayoutInflater.from(activity).inflate(R.layout.item_pillbox_slot, null);
         ((TextView) row.findViewById(R.id.text_slot_number)).setText(String.valueOf(compartment.compartmentNo));
         TextView title = row.findViewById(R.id.text_slot_title);
@@ -1151,39 +1296,28 @@ public final class MainScreens {
             status.setPadding(horizontal, vertical, horizontal, vertical);
             alert.setVisibility(View.VISIBLE);
         } else if (CareContracts.PENDING_LOAD.equals(compartment.state)) {
-            status.setText(R.string.pillbox_pending_load);
+            status.setText(R.string.pillbox_status_pending_load);
             status.setTextColor(activity.getColor(R.color.yakyeon_muted));
             status.setBackground(null);
             status.setPadding(0, 0, 0, 0);
-            alert.setVisibility(View.GONE);
-        } else if (CareContracts.showsLowStock(compartment)) {
-            status.setText(R.string.pillbox_low_stock);
-            status.setTextColor(activity.getColor(R.color.yakyeon_required));
-            status.setBackground(null);
-            status.setPadding(0, 0, 0, 0);
+            status.setVisibility(View.VISIBLE);
             alert.setVisibility(View.GONE);
         } else {
             status.setText(R.string.pillbox_status_normal);
             status.setTextColor(activity.getColor(R.color.yakyeon_brand));
             status.setBackground(null);
             status.setPadding(0, 0, 0, 0);
+            status.setVisibility(View.VISIBLE);
             alert.setVisibility(View.GONE);
         }
-        status.setVisibility(View.VISIBLE);
+        if (opened) {
+            status.setVisibility(View.VISIBLE);
+        }
         for (CareContracts.PillMedicine medicine : compartment.medications) {
             View line = LayoutInflater.from(activity).inflate(R.layout.item_pillbox_medicine, medicines, false);
             ((TextView) line.findViewById(R.id.text_medicine_name)).setText(medicine.drugName);
             line.findViewById(R.id.text_medicine_count).setVisibility(View.GONE);
             medicines.addView(line);
-        }
-        if (compartment.loadedCount != null) {
-            medicines.addView(slotNote(activity, activity.getString(R.string.pillbox_loaded, compartment.loadedCount)));
-        }
-        if (CareContracts.showsRemaining(compartment)) {
-            medicines.addView(slotNote(
-                    activity,
-                    activity.getString(R.string.pillbox_remaining, compartment.remainingCount)
-            ));
         }
         if (Boolean.FALSE.equals(compartment.pouchPresent)) {
             medicines.addView(slotNote(activity, activity.getString(R.string.pillbox_pouch_absent)));
@@ -1191,10 +1325,40 @@ public final class MainScreens {
         if (Boolean.TRUE.equals(compartment.alertActive)) {
             medicines.addView(slotNote(activity, activity.getString(R.string.pillbox_alert_on)));
         }
-        if (opened && CareContracts.showsLowStock(compartment)) {
-            medicines.addView(slotNote(activity, activity.getString(R.string.pillbox_low_stock)));
-        }
+        row.setOnClickListener(v -> {
+            if (!writesAllowed) {
+                host.showMessage(activity.getString(R.string.pillbox_read_only));
+                return;
+            }
+            if (!CareContracts.canRelease(compartment) || compartment.mappingId == null) {
+                host.showMessage(activity.getString(R.string.api_response_error));
+                return;
+            }
+            confirmRelease(activity, compartment.mappingId, host);
+        });
         return row;
+    }
+
+    private static void confirmRelease(AppCompatActivity activity, long mappingId, Host host) {
+        ConfirmDialog.show(
+                activity,
+                activity.getString(R.string.pillbox_release_title),
+                activity.getString(R.string.pillbox_release_message),
+                activity.getString(R.string.pillbox_release_action),
+                activity.getString(R.string.action_cancel),
+                new ConfirmDialog.Callback() {
+                    @Override
+                    public void onConfirm() {
+                        host.releaseCompartment(mappingId);
+                    }
+
+                    @Override
+                    public void onCancel() {
+                    }
+                },
+                ConfirmDialog.Mark.TRASH,
+                ConfirmDialog.Tone.DANGER
+        );
     }
 
     private static TextView slotNote(AppCompatActivity activity, String text) {
@@ -1409,12 +1573,47 @@ public final class MainScreens {
             long now,
             ZoneId zone
     ) {
-        boolean done = roundFinished(store, round, now, zone);
+        boolean scheduled = roundScheduled(store, round, now, zone);
+        boolean done = scheduled && (roundFinished(store, round, now, zone) || todaySettled(store, now, zone));
         View slot = root.findViewById(slotId);
         ImageView icon = root.findViewById(iconId);
+        slot.setVisibility(View.VISIBLE);
+        slot.setAlpha(1f);
+        icon.clearColorFilter();
+        if (!scheduled) {
+            slot.setBackgroundResource(R.drawable.yakyeon_slot_inactive);
+            icon.setImageResource(idleIcon);
+            icon.setColorFilter(root.getResources().getColor(R.color.yakyeon_icon_inactive, null));
+            return false;
+        }
         slot.setBackgroundResource(done ? R.drawable.yakyeon_slot_done : R.drawable.yakyeon_slot_idle);
         icon.setImageResource(done ? R.drawable.ic_yakyeon_check : idleIcon);
         return done;
+    }
+
+    /** Today's doses are all taken or past the miss window, and at least one exists. */
+    private static boolean todaySettled(MedicationStore store, long now, ZoneId zone) {
+        boolean any = false;
+        for (DoseRecord record : MedicationRules.onDate(store.records(), LocalDate.now(zone), zone)) {
+            any = true;
+            DoseStatus status = MedicationRules.displayStatus(record, now);
+            if (status == DoseStatus.COMPLETED || status == DoseStatus.DELAYED) {
+                continue;
+            }
+            if (now <= record.getScheduledAtMillis() + MedicationRules.THREE_HOURS_MS) {
+                return false;
+            }
+        }
+        return any;
+    }
+
+    private static boolean roundScheduled(MedicationStore store, DoseRound round, long now, ZoneId zone) {
+        for (DoseRecord record : MedicationRules.onDate(store.records(), LocalDate.now(zone), zone)) {
+            if (record.getRound() == round) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static boolean roundFinished(MedicationStore store, DoseRound round, long now, ZoneId zone) {

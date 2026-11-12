@@ -12,7 +12,8 @@ import java.util.List;
  * Upcoming rows are every untaken dose still after {@code now} and not later than
  * today's bedtime. Bedtime is the latest BEDTIME dose that day. When that dose is
  * absent, the existing latest bedtime minute in {@link MedicationRules} is the end.
- * The day is done only when every dose on or before that bedtime has been taken.
+ * The day is done when every dose on or before that bedtime is taken or recorded as missed.
+ * A dose still waiting to be checked keeps the day open.
  * Doses from other calendar days are left out of the card.
  */
 public final class HomeDoseFocus {
@@ -28,12 +29,19 @@ public final class HomeDoseFocus {
         public final String slot;
         public final long scheduledAtMillis;
         public final boolean taken;
+        /** Recorded miss. A dose still inside the check window is not missed. */
+        public final boolean missed;
 
         public Entry(String place, String slot, long scheduledAtMillis, boolean taken) {
+            this(place, slot, scheduledAtMillis, taken, false);
+        }
+
+        public Entry(String place, String slot, long scheduledAtMillis, boolean taken, boolean missed) {
             this.place = place == null ? "" : place;
             this.slot = slot == null ? "" : slot;
             this.scheduledAtMillis = scheduledAtMillis;
             this.taken = taken;
+            this.missed = missed && !taken;
         }
 
         public boolean bedtime() {
@@ -100,7 +108,7 @@ public final class HomeDoseFocus {
                     continue;
                 }
                 any = true;
-                if (entry.taken) {
+                if (entry.taken || entry.missed) {
                     continue;
                 }
                 if (entry.scheduledAtMillis > now) {

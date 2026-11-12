@@ -102,6 +102,11 @@ public final class HomeRegistration {
                 }
                 String meal = medicine.getMealRelation();
                 Integer offset = medicine.getMealOffsetMin();
+                if (!serverMeal(meal)) {
+                    // Keep the draft value for display. Do not send a phrase the server enum does not list.
+                    meal = null;
+                    offset = null;
+                }
                 if (meal == null) {
                     boolean before = medicine.timings().contains(DoseTiming.BEFORE_MEAL);
                     boolean after = medicine.timings().contains(DoseTiming.AFTER_MEAL_30);
@@ -162,6 +167,10 @@ public final class HomeRegistration {
 
     private static Prepared blocked(Block block) {
         return new Prepared(block, null, null, null);
+    }
+
+    private static boolean serverMeal(String meal) {
+        return "BEFORE_MEAL".equals(meal) || "AFTER_MEAL".equals(meal) || "WITH_MEAL".equals(meal);
     }
 
     private static Integer minutesFor(EnvelopeDraft draft, String slot) {
