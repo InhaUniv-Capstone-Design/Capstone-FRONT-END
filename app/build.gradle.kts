@@ -14,8 +14,8 @@ android {
         applicationId = "com.gamcho.yakyeon"
         minSdk = 26
         targetSdk = 37
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 2
+        versionName = "2.0"
         val apiBaseUrl = (project.findProperty("yakyeon.apiBaseUrl") as String?)
             ?: "https://kue200p7z3.execute-api.ap-northeast-2.amazonaws.com"
         buildConfigField(
