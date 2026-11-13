@@ -13,8 +13,13 @@ import android.provider.MediaStore;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.graphics.Rect;
 import android.view.View;
+import android.view.ViewGroup;
+import android.view.inputmethod.InputMethodManager;
+import android.widget.EditText;
 import android.widget.FrameLayout;
+import android.widget.ScrollView;
 import android.widget.TextView;
 
 import androidx.activity.EdgeToEdge;
@@ -298,8 +303,24 @@ public class MainActivity extends AppCompatActivity
         themeBackground = MaterialColors.getColor(root, android.R.attr.colorBackground);
         ViewCompat.setOnApplyWindowInsetsListener(root, (v, insets) -> {
             Insets systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars());
-            v.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom);
-            return insets;
+            Insets ime = insets.getInsets(WindowInsetsCompat.Type.ime());
+            boolean keyboard = insets.isVisible(WindowInsetsCompat.Type.ime()) && ime.bottom > 0;
+            int bottom = keyboard ? Math.max(systemBars.bottom, ime.bottom) : systemBars.bottom;
+            boolean opening = keyboard && v.getPaddingBottom() <= systemBars.bottom;
+            v.setPadding(systemBars.left, systemBars.top, systemBars.right, bottom);
+            if (opening) {
+                v.post(this::scrollFocusedFieldIntoView);
+            }
+            if (!keyboard) {
+                return insets;
+            }
+            return new WindowInsetsCompat.Builder(insets)
+                    .setInsets(WindowInsetsCompat.Type.ime(), Insets.NONE)
+                    .setInsets(
+                            WindowInsetsCompat.Type.systemBars(),
+                            Insets.of(systemBars.left, systemBars.top, systemBars.right, 0)
+                    )
+                    .build();
         });
 
         authFlow = new AuthFlow(navigator, YakyeonRepositoryProvider.get().signupDraft());
@@ -331,6 +352,9 @@ public class MainActivity extends AppCompatActivity
         getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
             @Override
             public void handleOnBackPressed() {
+                if (closeKeyboardInsteadOfLeaving()) {
+                    return;
+                }
                 if (authFlow.back()) {
                     render();
                     return;
@@ -1880,6 +1904,7 @@ public class MainActivity extends AppCompatActivity
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.MATCH_PARENT
         ));
+        releaseScrollFocus(content);
         tickVerification();
         maybeSyncAccountScreens(navigator.currentScreen());
         if (AuthScreen.LOGIN.equals(navigator.currentScreen())) {
@@ -2758,6 +2783,8 @@ public class MainActivity extends AppCompatActivity
             return;
         }
         requestProgress = Snackbar.make(screenContainer, message, Snackbar.LENGTH_INDEFINITE);
+        requestProgress.getView().setFocusable(false);
+        requestProgress.getView().setFocusableInTouchMode(false);
         requestProgress.show();
     }
 
@@ -2837,6 +2864,50 @@ public class MainActivity extends AppCompatActivity
 
     private boolean isAlive() {
         return !isFinishing() && !isDestroyed();
+    }
+
+    private boolean closeKeyboardInsteadOfLeaving() {
+        if (root == null) {
+            return false;
+        }
+        WindowInsetsCompat insets = ViewCompat.getRootWindowInsets(root);
+        if (insets == null || !insets.isVisible(WindowInsetsCompat.Type.ime())) {
+            return false;
+        }
+        View target = getCurrentFocus();
+        if (target == null) {
+            target = root;
+        }
+        InputMethodManager input = (InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
+        if (input != null) {
+            input.hideSoftInputFromWindow(target.getWindowToken(), 0);
+        }
+        return true;
+    }
+
+    private static void releaseScrollFocus(View view) {
+        if (view instanceof ScrollView) {
+            view.setFocusable(false);
+            view.setFocusableInTouchMode(false);
+        }
+        if (!(view instanceof ViewGroup)) {
+            return;
+        }
+        ViewGroup group = (ViewGroup) view;
+        for (int i = 0; i < group.getChildCount(); i++) {
+            releaseScrollFocus(group.getChildAt(i));
+        }
+    }
+
+    private void scrollFocusedFieldIntoView() {
+        View focused = getCurrentFocus();
+        if (!(focused instanceof EditText) || focused.getWidth() <= 0 || focused.getHeight() <= 0) {
+            return;
+        }
+        Rect rect = new Rect(0, 0, focused.getWidth(), focused.getHeight());
+        int margin = Math.round(16f * getResources().getDisplayMetrics().density);
+        rect.inset(0, -margin);
+        focused.requestRectangleOnScreen(rect, false);
     }
 
     @Override

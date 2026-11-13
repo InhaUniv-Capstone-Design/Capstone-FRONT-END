@@ -34,7 +34,14 @@ public class YakyeonTextField extends TextInputLayout {
         super(context, attrs, com.google.android.material.R.attr.textInputOutlinedStyle);
         editText = new TextInputEditText(context);
         addView(editText, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
+        bindEditorId(getId());
         applyMeasuredFieldShape();
+    }
+
+    @Override
+    public void setId(int id) {
+        super.setId(id);
+        bindEditorId(id);
     }
 
     private void applyMeasuredFieldShape() {
@@ -124,7 +131,10 @@ public class YakyeonTextField extends TextInputLayout {
         editText.setRawInputType(kind == LatinCredentialFilter.Kind.PASSWORD
                 ? AuthInputTypes.PASSWORD
                 : AuthInputTypes.ID);
-        editText.setImeOptions(EditorInfo.IME_FLAG_FORCE_ASCII | EditorInfo.IME_ACTION_DONE);
+        // flagForceAscii makes Samsung Keyboard open and close at once.
+        // The Latin filter already drops non-ASCII. This hint asks that keyboard for English.
+        editText.setImeOptions(EditorInfo.IME_ACTION_DONE);
+        editText.setPrivateImeOptions("defaultInputmode=english");
         InputFilter latin = LatinCredentialFilter.filter(kind);
         if (credentialLimit > 0) {
             editText.setFilters(new InputFilter[]{latin, new InputFilter.LengthFilter(credentialLimit)});
@@ -137,6 +147,24 @@ public class YakyeonTextField extends TextInputLayout {
         View icon = findViewById(com.google.android.material.R.id.text_input_end_icon);
         if (icon instanceof Checkable) {
             ((Checkable) icon).setChecked(!passwordHidden);
+        }
+        if (icon != null) {
+            icon.setFocusable(false);
+            icon.setFocusableInTouchMode(false);
+        }
+    }
+
+    /**
+     * The inner editor is created in code, so it has no XML id. Without a stable id,
+     * rotation and process death drop whatever the user typed.
+     */
+    private void bindEditorId(int fieldId) {
+        if (editText == null || fieldId == View.NO_ID) {
+            return;
+        }
+        int editorId = 0x01000000 | (fieldId & 0x00FFFFFF);
+        if (editText.getId() != editorId) {
+            editText.setId(editorId);
         }
     }
 

@@ -101,6 +101,19 @@
         <item name="android:gravity">center_vertical</item>
     </style>
 
+    <style name="Widget.Yakyeon.SlotCheck" parent="Widget.Yakyeon.RoundCheck">
+        <item name="android:layout_width">0dp</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_weight">1</item>
+        <item name="android:maxLines">2</item>
+        <item name="android:textSize">11sp</item>
+        <item name="android:paddingStart">0dp</item>
+        <item name="android:paddingEnd">0dp</item>
+        <item name="android:includeFontPadding">false</item>
+        <item name="android:gravity">center_vertical|start</item>
+        <item name="android:lineSpacingExtra">0dp</item>
+    </style>
+
     <style name="Widget.Yakyeon.RadioButton" parent="Widget.Material3.CompoundButton.RadioButton">
         <item name="buttonTint">@color/yakyeon_control_tint</item>
         <item name="rippleColor">@color/yakyeon_mint</item>

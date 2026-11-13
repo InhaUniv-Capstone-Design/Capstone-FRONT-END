@@ -2,7 +2,6 @@ package com.example.yakyeon2.auth;
 
 import android.app.DatePickerDialog;
 import android.content.ActivityNotFoundException;
-import android.content.Context;
 import android.content.Intent;
 import android.content.res.ColorStateList;
 import android.graphics.Typeface;
@@ -14,10 +13,10 @@ import android.util.TypedValue;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
-import android.view.inputmethod.InputMethodManager;
 import android.widget.CheckBox;
 import android.widget.LinearLayout;
 import android.widget.RadioButton;
+import android.widget.ScrollView;
 import android.widget.TextView;
 
 import androidx.annotation.NonNull;
@@ -197,6 +196,7 @@ public final class AuthScreens {
                 host.onFindLoginId(name.getText(), phone.getText()));
         root.findViewById(R.id.button_reset_next).setOnClickListener(v ->
                 host.onResetIdentityNext(id.getText(), resetPhone.getText()));
+        keepScrollFromTakingFocus(root);
         return root;
     }
 
@@ -257,6 +257,7 @@ public final class AuthScreens {
         root.findViewById(R.id.button_recovery_next).setOnClickListener(v -> host.onRecoveryVerifiedNext());
         applyPhoneVerification(activity, root, phoneVerification, host);
         paintVerification(root, verifiedPhone, phoneVerified, verificationExpiresAt);
+        keepScrollFromTakingFocus(root);
         return root;
     }
 
@@ -283,6 +284,7 @@ public final class AuthScreens {
             }
             host.onResetPassword(id.getText(), form.resetPhone(), password.getText(), confirm.getText());
         });
+        keepScrollFromTakingFocus(root);
         return root;
     }
 
@@ -516,6 +518,7 @@ public final class AuthScreens {
                 ));
         applyPhoneVerification(activity, root, phoneVerification, host);
         paintVerification(root, verifiedPhone, phoneVerified, verificationExpiresAt);
+        keepScrollFromTakingFocus(root);
         return root;
     }
 
@@ -543,14 +546,10 @@ public final class AuthScreens {
             done.setVisibility(showDone ? View.VISIBLE : View.GONE);
         }
         if (code != null) {
-            if (showDone) {
-                code.clearFocus();
-                InputMethodManager input = (InputMethodManager) root.getContext()
-                        .getSystemService(Context.INPUT_METHOD_SERVICE);
-                if (input != null) {
-                    input.hideSoftInputFromWindow(code.getWindowToken(), 0);
-                }
-            }
+            // Hiding the code field clears focus only when that field itself is focused.
+            // Do not hide the window IME here. This method also runs every second for the
+            // countdown, and hideSoftInputFromWindow(windowToken) closes the keyboard
+            // on the id and password fields.
             code.setVisibility(showDone ? View.GONE : View.VISIBLE);
         }
         TextView smsCode = root.findViewById(R.id.text_sms_code);
@@ -689,6 +688,20 @@ public final class AuthScreens {
         });
         dialog.setOnShowListener(shown -> tintCaregiverSurface(activity, dialog));
         dialog.show();
+    }
+
+    private static void keepScrollFromTakingFocus(View root) {
+        if (root instanceof ScrollView) {
+            root.setFocusable(false);
+            root.setFocusableInTouchMode(false);
+        }
+        if (!(root instanceof ViewGroup)) {
+            return;
+        }
+        ViewGroup group = (ViewGroup) root;
+        for (int i = 0; i < group.getChildCount(); i++) {
+            keepScrollFromTakingFocus(group.getChildAt(i));
+        }
     }
 
     private static void prepareField(YakyeonTextField field, String hint, boolean password) {

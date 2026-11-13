@@ -366,9 +366,9 @@ public final class HomeContracts {
         public final Long matchedDrugId;
         public final List<DrugSuggestion> candidates;
         public final String dosePerIntake;
-        public final long timesPerDay;
+        public final Long timesPerDay;
         public final List<String> timingSlots;
-        public final long totalDays;
+        public final Long totalDays;
         public final boolean prn;
         public final String mealRelation;
         public final Long mealOffsetMin;
@@ -378,9 +378,9 @@ public final class HomeContracts {
                 Long matchedDrugId,
                 List<DrugSuggestion> candidates,
                 String dosePerIntake,
-                long timesPerDay,
+                Long timesPerDay,
                 List<String> timingSlots,
-                long totalDays,
+                Long totalDays,
                 boolean prn,
                 String mealRelation,
                 Long mealOffsetMin
@@ -1037,15 +1037,16 @@ public final class HomeContracts {
             if (!knownMeal(meal) && !MealTimingText.displaysAsAfterMeal(meal)) {
                 meal = null;
             }
+            Boolean prn = JsonReads.optionalBool(item, "is_prn");
             rows.add(new RecognizedMedication(
                     JsonReads.text(item, "drug_name"),
                     JsonReads.optionalPositiveId(item, "matched_drug_id"),
-                    readSuggestions(requiredArray(item, "candidates")),
-                    JsonReads.decimal(item, "dose_per_intake"),
-                    JsonReads.number(item, "times_per_day"),
+                    ocrCandidates(item),
+                    JsonReads.optionalDecimal(item, "dose_per_intake"),
+                    JsonReads.optionalNumber(item, "times_per_day"),
                     ocrTimingSlots(item),
-                    JsonReads.number(item, "total_days"),
-                    JsonReads.bool(item, "is_prn"),
+                    JsonReads.optionalNumber(item, "total_days"),
+                    prn != null && prn,
                     meal,
                     ocrMealOffset(item)
             ));
@@ -1330,6 +1331,17 @@ public final class HomeContracts {
         } catch (DateTimeParseException exception) {
             return null;
         }
+    }
+
+    private static List<DrugSuggestion> ocrCandidates(JSONObject item) throws ApiException {
+        if (item == null || !item.has("candidates") || item.isNull("candidates")) {
+            return new ArrayList<>();
+        }
+        Object value = item.opt("candidates");
+        if (!(value instanceof JSONArray)) {
+            throw ApiException.response(200);
+        }
+        return readSuggestions((JSONArray) value);
     }
 
     private static List<String> ocrTimingSlots(JSONObject item) {

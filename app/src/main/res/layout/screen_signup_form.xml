@@ -16,10 +16,12 @@
         android:textSize="13sp" />
 
     <ScrollView
+        android:id="@+id/signup_form_scroll"
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_marginTop="15dp"
-        android:layout_weight="1">
+        android:layout_weight="1"
+        android:isScrollContainer="true">
 
         <LinearLayout
             android:layout_width="match_parent"
@@ -153,7 +155,8 @@
                         android:layout_height="52dp"
                         android:background="@drawable/bg_code_verified"
                         android:clickable="true"
-                        android:focusable="true"
+                        android:focusable="false"
+                        android:focusableInTouchMode="false"
                         android:gravity="center_vertical"
                         android:minHeight="52dp"
                         android:paddingStart="16dp"

@@ -813,7 +813,8 @@ public final class MedScreens {
         TextView name = row.findViewById(R.id.text_row_name);
         TextView frequency = row.findViewById(R.id.text_row_frequency);
         name.setText(displayName(activity, medicine.getName()));
-        frequency.setText(frequencyLine(activity, medicine.rounds().size(), timingsText(activity, medicine)));
+        ensureAutoTimings(medicine);
+        frequency.setText(scheduleLine(activity, medicine));
         row.findViewById(R.id.text_row_chevron).setVisibility(expanded ? View.GONE : View.VISIBLE);
         View panel = row.findViewById(R.id.panel_expand);
         panel.setVisibility(expanded ? View.VISIBLE : View.GONE);
@@ -836,15 +837,7 @@ public final class MedScreens {
         showNameKind(activity, row.findViewById(R.id.text_name_kind), currentName);
         nameValue.setOnClickListener(v -> pickMedicineName(activity, medicine, host, host::refresh));
         bindAmount(activity, row, medicine);
-        CheckBox timingBed = row.findViewById(R.id.check_timing_bed);
-        bindTiming(row, row.findViewById(R.id.check_timing_before), medicine, DoseTiming.BEFORE_MEAL);
-        bindTiming(row, row.findViewById(R.id.check_timing_after), medicine, DoseTiming.AFTER_MEAL_30);
-        bindRound(row.findViewById(R.id.check_morning), medicine, DoseRound.MORNING, row, activity);
-        bindRound(row.findViewById(R.id.check_lunch), medicine, DoseRound.LUNCH, row, activity);
-        bindRound(row.findViewById(R.id.check_evening), medicine, DoseRound.EVENING, row, activity);
-        bindRound(row.findViewById(R.id.check_bedtime), medicine, DoseRound.BEDTIME, row, activity,
-                () -> syncBedtimeTiming(medicine, timingBed));
-        syncBedtimeTiming(medicine, timingBed);
+        bindDraftChoices(row, medicine, activity);
         TextView periodStart = row.findViewById(R.id.text_period_start);
         TextView periodEnd = row.findViewById(R.id.text_period_end);
         paintDateField(activity, periodStart, medicine.getStart(), R.string.med_period_start);
@@ -1158,59 +1151,108 @@ public final class MedScreens {
         });
     }
 
+    private static void bindDraftChoices(View row, MedicineDraft medicine, AppCompatActivity activity) {
+        Runnable refresh = () -> {
+            ensureAutoTimings(medicine);
+            bindDraftChoices(row, medicine, activity);
+            updateFrequency(activity, row, medicine);
+        };
+        bindRound(row.findViewById(R.id.check_morning), medicine, DoseRound.MORNING, row, activity, refresh);
+        bindRound(row.findViewById(R.id.check_lunch), medicine, DoseRound.LUNCH, row, activity, refresh);
+        bindRound(row.findViewById(R.id.check_evening), medicine, DoseRound.EVENING, row, activity, refresh);
+        bindRound(row.findViewById(R.id.check_bedtime), medicine, DoseRound.BEDTIME, row, activity, refresh);
+        bindPrn(row.findViewById(R.id.check_prn), medicine, refresh);
+        bindTiming(row, row.findViewById(R.id.check_timing_before), medicine, DoseTiming.BEFORE_MEAL);
+        bindTiming(row, row.findViewById(R.id.check_timing_after), medicine, DoseTiming.AFTER_MEAL_30);
+        bindTiming(row, row.findViewById(R.id.check_timing_with), medicine, DoseTiming.WITH_MEAL);
+        bindLinkedTiming(row.findViewById(R.id.check_timing_bed), medicine.timings().contains(DoseTiming.BEDTIME));
+        bindLinkedTiming(row.findViewById(R.id.check_timing_always), medicine.timings().contains(DoseTiming.ALWAYS));
+    }
+
+    private static void bindPrn(CheckBox box, MedicineDraft medicine, Runnable afterChange) {
+        if (box == null) {
+            return;
+        }
+        box.setOnCheckedChangeListener(null);
+        box.setChecked(medicine.isPrn());
+        box.setOnCheckedChangeListener((button, checked) -> {
+            medicine.setPrn(checked);
+            if (checked) {
+                medicine.rounds().clear();
+            }
+            if (afterChange != null) {
+                afterChange.run();
+            }
+        });
+    }
+
+    private static void bindLinkedTiming(CheckBox box, boolean checked) {
+        if (box == null) {
+            return;
+        }
+        box.setOnCheckedChangeListener(null);
+        box.setChecked(checked);
+        box.setOnCheckedChangeListener((button, next) -> {
+            if (next != checked) {
+                button.setChecked(checked);
+            }
+        });
+    }
+
+    static void ensureAutoTimings(MedicineDraft medicine) {
+        if (medicine == null) {
+            return;
+        }
+        if (medicine.isPrn()) {
+            medicine.rounds().clear();
+            medicine.timings().remove(DoseTiming.BEDTIME);
+            medicine.timings().add(DoseTiming.ALWAYS);
+            return;
+        }
+        medicine.timings().remove(DoseTiming.ALWAYS);
+        if (medicine.rounds().contains(DoseRound.BEDTIME)) {
+            medicine.timings().add(DoseTiming.BEDTIME);
+        } else {
+            medicine.timings().remove(DoseTiming.BEDTIME);
+        }
+    }
+
     private static void bindTiming(View row, CheckBox box, MedicineDraft medicine, DoseTiming timing) {
+        if (box == null) {
+            return;
+        }
         box.setOnCheckedChangeListener(null);
         box.setChecked(timingSelected(medicine, timing));
         box.setOnCheckedChangeListener((button, checked) -> {
             medicine.clearMealRelation();
             if (checked) {
+                medicine.timings().remove(DoseTiming.BEFORE_MEAL);
+                medicine.timings().remove(DoseTiming.AFTER_MEAL_30);
+                medicine.timings().remove(DoseTiming.WITH_MEAL);
                 medicine.timings().add(timing);
             } else {
                 medicine.timings().remove(timing);
             }
             bindTiming(row, row.findViewById(R.id.check_timing_before), medicine, DoseTiming.BEFORE_MEAL);
             bindTiming(row, row.findViewById(R.id.check_timing_after), medicine, DoseTiming.AFTER_MEAL_30);
+            bindTiming(row, row.findViewById(R.id.check_timing_with), medicine, DoseTiming.WITH_MEAL);
             if (row.getContext() instanceof AppCompatActivity) {
-                AppCompatActivity activity = (AppCompatActivity) row.getContext();
-                TextView frequency = row.findViewById(R.id.text_row_frequency);
-                if (frequency != null) {
-                    frequency.setText(frequencyLine(
-                            activity,
-                            medicine.rounds().size(),
-                            timingsText(activity, medicine)
-                    ));
-                }
+                updateFrequency((AppCompatActivity) row.getContext(), row, medicine);
             }
         });
     }
 
     static boolean timingSelected(MedicineDraft medicine, DoseTiming timing) {
+        if (medicine == null || timing == null) {
+            return false;
+        }
         if (medicine.timings().contains(timing)) {
             return true;
         }
-        return timing == DoseTiming.AFTER_MEAL_30
-                && MealTimingText.displaysAsAfterMeal(medicine.getMealRelation());
-    }
-
-    private static void syncBedtimeTiming(MedicineDraft medicine, CheckBox timingBed) {
-        boolean allowed = medicine.rounds().contains(DoseRound.BEDTIME);
-        if (!allowed) {
-            medicine.timings().remove(DoseTiming.BEDTIME);
+        if (timing == DoseTiming.AFTER_MEAL_30) {
+            return MealTimingText.displaysAsAfterMeal(medicine.getMealRelation());
         }
-        timingBed.setOnCheckedChangeListener(null);
-        timingBed.setChecked(medicine.timings().contains(DoseTiming.BEDTIME));
-        timingBed.setEnabled(allowed);
-        timingBed.setOnCheckedChangeListener((button, checked) -> {
-            if (checked && !medicine.rounds().contains(DoseRound.BEDTIME)) {
-                button.setChecked(false);
-                return;
-            }
-            if (checked) {
-                medicine.timings().add(DoseTiming.BEDTIME);
-            } else {
-                medicine.timings().remove(DoseTiming.BEDTIME);
-            }
-        });
+        return timing == DoseTiming.WITH_MEAL && "WITH_MEAL".equals(medicine.getMealRelation());
     }
 
     private static void paintDateField(
@@ -1236,7 +1278,7 @@ public final class MedScreens {
         if (frequency == null) {
             return;
         }
-        frequency.setText(frequencyLine(activity, medicine.rounds().size(), timingsText(activity, medicine)));
+        frequency.setText(scheduleLine(activity, medicine));
     }
 
     private static void pickDate(AppCompatActivity activity, LocalDate current, java.util.function.Consumer<LocalDate> onPick) {
@@ -1744,6 +1786,20 @@ public final class MedScreens {
                 .show();
     }
 
+    private static String scheduleLine(AppCompatActivity activity, MedicineDraft medicine) {
+        String timing = timingsText(activity, medicine);
+        if (medicine != null && medicine.isPrn()) {
+            String base = activity.getString(R.string.round_prn);
+            if (timing == null || timing.isEmpty()
+                    || activity.getString(R.string.med_timing_unset).equals(timing)) {
+                return base;
+            }
+            return base + " · " + timing;
+        }
+        int times = medicine == null ? 0 : medicine.rounds().size();
+        return frequencyLine(activity, times, timing);
+    }
+
     private static String frequencyLine(AppCompatActivity activity, int times, String timing) {
         String frequency = activity.getString(R.string.med_frequency, times);
         if (timing == null || timing.isEmpty()
@@ -1762,6 +1818,9 @@ public final class MedScreens {
         }
         if ("BEFORE_MEAL".equals(medication.mealRelation)) {
             return activity.getString(R.string.med_timing_before);
+        }
+        if ("WITH_MEAL".equals(medication.mealRelation)) {
+            return activity.getString(R.string.med_timing_with);
         }
         return null;
     }
@@ -1783,6 +1842,7 @@ public final class MedScreens {
     ) {
         StringBuilder text = new StringBuilder();
         boolean showedAfter = false;
+        boolean showedWith = false;
         if (timings != null) {
             for (DoseTiming timing : DoseTiming.values()) {
                 if (!timings.contains(timing)) {
@@ -1795,6 +1855,9 @@ public final class MedScreens {
                 if (timing == DoseTiming.AFTER_MEAL_30) {
                     showedAfter = true;
                 }
+                if (timing == DoseTiming.WITH_MEAL) {
+                    showedWith = true;
+                }
             }
         }
         if (!showedAfter && MealTimingText.displaysAsAfterMeal(mealRelation)) {
@@ -1802,6 +1865,12 @@ public final class MedScreens {
                 text.append(", ");
             }
             text.append(activity.getString(R.string.med_timing_after));
+        }
+        if (!showedWith && "WITH_MEAL".equals(mealRelation)) {
+            if (text.length() > 0) {
+                text.append(", ");
+            }
+            text.append(activity.getString(R.string.med_timing_with));
         }
         if (text.length() == 0) {
             return activity.getString(R.string.med_timing_unset);
@@ -1813,8 +1882,12 @@ public final class MedScreens {
         switch (timing) {
             case BEFORE_MEAL:
                 return activity.getString(R.string.med_timing_before);
+            case WITH_MEAL:
+                return activity.getString(R.string.med_timing_with);
             case BEDTIME:
                 return activity.getString(R.string.med_timing_bed);
+            case ALWAYS:
+                return activity.getString(R.string.med_timing_always);
             case AFTER_MEAL_30:
             default:
                 return activity.getString(R.string.med_timing_after);
@@ -1915,31 +1988,56 @@ public final class MedScreens {
             medicine.setName(item.drugName);
             medicine.setDrugId(item.matchedDrugId);
             medicine.setPrn(item.prn);
-            DoseAmount amount = DoseAmount.from(DoseAmount.UNIT_TABLET, item.dosePerIntake);
-            if (amount != null) {
-                medicine.setAmount(amount);
+            if (item.dosePerIntake != null) {
+                DoseAmount amount = DoseAmount.from(DoseAmount.UNIT_TABLET, item.dosePerIntake);
+                if (amount != null) {
+                    medicine.setAmount(amount);
+                }
+                medicine.setDoseText(item.dosePerIntake);
             }
-            medicine.setDoseText(item.dosePerIntake);
             if (item.mealRelation != null) {
                 medicine.setMealRelation(item.mealRelation, item.mealOffsetMin == null ? null : item.mealOffsetMin.intValue());
             }
             applyRecognizedTiming(medicine, item);
             applyRecognizedRounds(medicine, item);
-            if (item.totalDays >= 1L && item.totalDays <= 365L) {
+            if (item.totalDays != null && item.totalDays >= 1L && item.totalDays <= 365L) {
                 medicine.setEnd(start.plusDays(item.totalDays - 1L));
             }
         }
     }
 
     private static void applyRecognizedRounds(MedicineDraft medicine, HomeContracts.RecognizedMedication item) {
-        if (item.timingSlots == null) {
+        if (item.timingSlots != null && !item.timingSlots.isEmpty()) {
+            for (String slot : item.timingSlots) {
+                DoseRound round = roundForSlot(slot);
+                if (round != null) {
+                    medicine.rounds().add(round);
+                }
+            }
             return;
         }
-        for (String slot : item.timingSlots) {
-            DoseRound round = roundForSlot(slot);
-            if (round != null) {
-                medicine.rounds().add(round);
-            }
+        if (item.timingSlots == null || item.prn || item.timesPerDay == null) {
+            return;
+        }
+        // Empty slots are not a recognized schedule. A daily count only pre-checks a draft.
+        addDraftRounds(medicine, item.timesPerDay);
+    }
+
+    private static void addDraftRounds(MedicineDraft medicine, long times) {
+        if (times == 1L) {
+            medicine.rounds().add(DoseRound.MORNING);
+        } else if (times == 2L) {
+            medicine.rounds().add(DoseRound.MORNING);
+            medicine.rounds().add(DoseRound.EVENING);
+        } else if (times == 3L) {
+            medicine.rounds().add(DoseRound.MORNING);
+            medicine.rounds().add(DoseRound.LUNCH);
+            medicine.rounds().add(DoseRound.EVENING);
+        } else if (times == 4L) {
+            medicine.rounds().add(DoseRound.MORNING);
+            medicine.rounds().add(DoseRound.LUNCH);
+            medicine.rounds().add(DoseRound.EVENING);
+            medicine.rounds().add(DoseRound.BEDTIME);
         }
     }
 
@@ -1964,7 +2062,15 @@ public final class MedScreens {
             medicine.timings().add(DoseTiming.BEFORE_MEAL);
             return;
         }
-        if ("AFTER_MEAL".equals(item.mealRelation) && item.mealOffsetMin != null && item.mealOffsetMin == 30L) {
+        if ("WITH_MEAL".equals(item.mealRelation)) {
+            medicine.timings().add(DoseTiming.WITH_MEAL);
+            return;
+        }
+        if (!"AFTER_MEAL".equals(item.mealRelation)) {
+            return;
+        }
+        if (item.mealOffsetMin == null || item.mealOffsetMin == 30L) {
+            // One after-meal choice on the form. A missing offset is not stored as 30.
             medicine.timings().add(DoseTiming.AFTER_MEAL_30);
         }
     }

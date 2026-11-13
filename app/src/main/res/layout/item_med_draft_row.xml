@@ -142,43 +142,49 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="4dp"
+            android:baselineAligned="false"
+            android:gravity="center_vertical"
             android:orientation="horizontal">
 
             <CheckBox
                 android:id="@+id/check_morning"
-                style="@style/Widget.Yakyeon.RoundCheck"
+                style="@style/Widget.Yakyeon.SlotCheck"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:maxLines="1"
                 android:text="@string/round_morning" />
 
             <CheckBox
                 android:id="@+id/check_lunch"
-                style="@style/Widget.Yakyeon.RoundCheck"
+                style="@style/Widget.Yakyeon.SlotCheck"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:maxLines="1"
                 android:text="@string/round_lunch" />
 
             <CheckBox
                 android:id="@+id/check_evening"
-                style="@style/Widget.Yakyeon.RoundCheck"
+                style="@style/Widget.Yakyeon.SlotCheck"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:maxLines="1"
                 android:text="@string/round_evening" />
 
             <CheckBox
                 android:id="@+id/check_bedtime"
-                style="@style/Widget.Yakyeon.RoundCheck"
+                style="@style/Widget.Yakyeon.SlotCheck"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:maxLines="1"
                 android:text="@string/round_bedtime" />
+
+            <CheckBox
+                android:id="@+id/check_prn"
+                style="@style/Widget.Yakyeon.SlotCheck"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/round_prn" />
         </LinearLayout>
 
         <TextView
@@ -190,34 +196,49 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="4dp"
+            android:baselineAligned="false"
+            android:gravity="center_vertical"
             android:orientation="horizontal">
 
             <CheckBox
                 android:id="@+id/check_timing_before"
-                style="@style/Widget.Yakyeon.RoundCheck"
+                style="@style/Widget.Yakyeon.SlotCheck"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:maxLines="1"
                 android:text="@string/med_timing_before" />
 
             <CheckBox
                 android:id="@+id/check_timing_after"
-                style="@style/Widget.Yakyeon.RoundCheck"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1.35"
-                android:maxLines="1"
-                android:text="@string/med_timing_after" />
-
-            <CheckBox
-                android:id="@+id/check_timing_bed"
-                style="@style/Widget.Yakyeon.RoundCheck"
+                style="@style/Widget.Yakyeon.SlotCheck"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:maxLines="1"
+                android:text="@string/med_timing_after" />
+
+            <CheckBox
+                android:id="@+id/check_timing_with"
+                style="@style/Widget.Yakyeon.SlotCheck"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/med_timing_with" />
+
+            <CheckBox
+                android:id="@+id/check_timing_bed"
+                style="@style/Widget.Yakyeon.SlotCheck"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
                 android:text="@string/med_timing_bed" />
+
+            <CheckBox
+                android:id="@+id/check_timing_always"
+                style="@style/Widget.Yakyeon.SlotCheck"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/med_timing_always" />
         </LinearLayout>
 
         <TextView

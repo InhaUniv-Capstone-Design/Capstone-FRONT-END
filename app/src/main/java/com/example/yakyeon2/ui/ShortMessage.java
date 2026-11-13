@@ -14,6 +14,9 @@ public final class ShortMessage {
     }
 
     public static void show(@NonNull View anchor, @NonNull CharSequence message) {
-        Snackbar.make(anchor, message, DURATION_MS).show();
+        Snackbar snackbar = Snackbar.make(anchor, message, DURATION_MS);
+        snackbar.getView().setFocusable(false);
+        snackbar.getView().setFocusableInTouchMode(false);
+        snackbar.show();
     }
 }

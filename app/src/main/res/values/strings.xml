@@ -124,6 +124,7 @@
     <string name="round_lunch">점심</string>
     <string name="round_evening">저녁</string>
     <string name="round_bedtime">취침</string>
+    <string name="round_prn">필요 시</string>
     <string name="home_interaction">병용금기 등재 정보가 %1$d건 있어요</string>
     <string name="home_interaction_hint">등재 여부만 그래프 탭에서 확인합니다.</string>
     <string name="home_interaction_unchecked">등재 확인이 안 된 약이 %1$d건 있어, 없다고 해서 안전하다고 볼 수 없습니다.</string>
@@ -692,7 +693,9 @@
     <string name="med_timing_unset">복용 시점 선택</string>
     <string name="med_timing_after">식후</string>
     <string name="med_timing_before">식전</string>
-    <string name="med_timing_bed">취침전</string>
+    <string name="med_timing_with">식사와 함께</string>
+    <string name="med_timing_bed">취침</string>
+    <string name="med_timing_always">상시</string>
     <string name="med_frequency">1일 %1$d회</string>
     <string name="med_period_start">시작일</string>
     <string name="med_period_end">종료일</string>

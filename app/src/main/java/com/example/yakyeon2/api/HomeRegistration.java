@@ -110,12 +110,16 @@ public final class HomeRegistration {
                 if (meal == null) {
                     boolean before = medicine.timings().contains(DoseTiming.BEFORE_MEAL);
                     boolean after = medicine.timings().contains(DoseTiming.AFTER_MEAL_30);
-                    if (before && !after) {
+                    boolean withMeal = medicine.timings().contains(DoseTiming.WITH_MEAL);
+                    if (before && !after && !withMeal) {
                         meal = "BEFORE_MEAL";
                         offset = 0;
-                    } else if (after && !before) {
+                    } else if (after && !before && !withMeal) {
                         meal = "AFTER_MEAL";
                         offset = 30;
+                    } else if (withMeal && !before && !after) {
+                        meal = "WITH_MEAL";
+                        offset = null;
                     }
                 }
                 medications.put(HomeContracts.medicationBody(
