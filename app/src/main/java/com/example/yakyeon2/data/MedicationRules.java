@@ -13,6 +13,10 @@ public final class MedicationRules {
 
     public static final long THREE_HOURS_MS = 3L * 60L * 60L * 1000L;
     public static final int FOUR_HOURS_MINUTES = 4 * 60;
+    public static final int MORNING_MINUTE = 8 * 60;
+    public static final int LUNCH_MINUTE = 13 * 60;
+    public static final int EVENING_MINUTE = 18 * 60;
+    public static final int BEDTIME_MINUTE = 22 * 60;
     public static final int MEAL_LATEST_MINUTE = 20 * 60 + 59;
     public static final int BEDTIME_LATEST_MINUTE = 23 * 60 + 59;
     public static final int HISTORY_DEFAULT_DAYS = 14;
@@ -124,26 +128,88 @@ public final class MedicationRules {
         if (current != null && current >= 0 && current < MINUTES_PER_DAY) {
             return current;
         }
-        int seeded;
-        switch (round) {
-            case LUNCH:
-                seeded = 13 * 60;
-                break;
-            case EVENING:
-                seeded = 18 * 60;
-                break;
-            case BEDTIME:
-                seeded = 22 * 60;
-                break;
-            case MORNING:
-            default:
-                seeded = 8 * 60;
-                break;
-        }
+        int seeded = defaultMinute(round);
         if (writeIfMissing && minutes != null) {
             minutes.put(round, seeded);
         }
         return seeded;
+    }
+
+    public static boolean isFixedMealRound(DoseRound round) {
+        return round == DoseRound.MORNING || round == DoseRound.LUNCH || round == DoseRound.EVENING;
+    }
+
+    /**
+     * Morning, lunch, and evening stay on the fixed clock. Bedtime is left as stored.
+     * Only rounds in {@code selected} are written.
+     */
+    public static void pinSelectedMealTimes(Set<DoseRound> selected, Map<DoseRound, Integer> minutes) {
+        if (selected == null || minutes == null) {
+            return;
+        }
+        for (DoseRound round : selected) {
+            if (isFixedMealRound(round)) {
+                minutes.put(round, defaultMinute(round));
+            }
+        }
+    }
+
+    public static boolean hasMealRound(MedicineDraft medicine) {
+        if (medicine == null) {
+            return false;
+        }
+        return medicine.rounds().contains(DoseRound.MORNING)
+                || medicine.rounds().contains(DoseRound.LUNCH)
+                || medicine.rounds().contains(DoseRound.EVENING);
+    }
+
+    /**
+     * 식전, 식후, and 식사와 함께 apply only to morning, lunch, and evening.
+     * A meal round needs exactly one of them. No meal round means none of them.
+     */
+    public static boolean mealTimingMatches(MedicineDraft medicine) {
+        if (medicine == null) {
+            return false;
+        }
+        int count = mealTimingCount(medicine);
+        if (medicine.isPrn() || !hasMealRound(medicine)) {
+            return count == 0;
+        }
+        return count == 1;
+    }
+
+    public static int mealTimingCount(MedicineDraft medicine) {
+        if (medicine == null) {
+            return 0;
+        }
+        int count = 0;
+        if (medicine.timings().contains(DoseTiming.BEFORE_MEAL)
+                || "BEFORE_MEAL".equals(medicine.getMealRelation())) {
+            count++;
+        }
+        if (medicine.timings().contains(DoseTiming.AFTER_MEAL_30)
+                || MealTimingText.displaysAsAfterMeal(medicine.getMealRelation())) {
+            count++;
+        }
+        if (medicine.timings().contains(DoseTiming.WITH_MEAL)
+                || "WITH_MEAL".equals(medicine.getMealRelation())) {
+            count++;
+        }
+        return count;
+    }
+
+    private static int defaultMinute(DoseRound round) {
+        switch (round) {
+            case LUNCH:
+                return LUNCH_MINUTE;
+            case EVENING:
+                return EVENING_MINUTE;
+            case BEDTIME:
+                return BEDTIME_MINUTE;
+            case MORNING:
+            default:
+                return MORNING_MINUTE;
+        }
     }
 
     public static TimeCheck checkAlarmTimes(Set<DoseRound> required, Map<DoseRound, Integer> minutes) {
@@ -228,13 +294,19 @@ public final class MedicationRules {
         if (name == null || name.trim().isEmpty()) {
             return false;
         }
-        if (!medicine.hasDose() || medicine.timings().isEmpty()) {
+        if (!medicine.hasDose() || medicine.getStart() == null || medicine.getEnd() == null) {
             return false;
         }
-        if (medicine.rounds().isEmpty() || medicine.getStart() == null || medicine.getEnd() == null) {
+        if (medicine.getEnd().isBefore(medicine.getStart())) {
             return false;
         }
-        return !medicine.getEnd().isBefore(medicine.getStart());
+        if (medicine.isPrn()) {
+            return mealTimingMatches(medicine);
+        }
+        if (medicine.rounds().isEmpty()) {
+            return false;
+        }
+        return mealTimingMatches(medicine);
     }
 
     public static boolean rangeAllowed(LocalDate start, LocalDate end) {

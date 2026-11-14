@@ -262,6 +262,8 @@ public class MainActivity extends AppCompatActivity
     private final java.util.Set<Long> catchUpAsked = new java.util.HashSet<>();
     private HomeContracts.Dose pendingCatchUp;
     private Dialog catchUpDialog;
+    private Dialog uncheckedListDialog;
+    private boolean resumeUncheckedList;
     private static boolean notificationPermissionRequested;
     private boolean noticePermissionAsked;
     private final ActivityResultLauncher<String> notificationPermission = registerForActivityResult(
@@ -2088,14 +2090,14 @@ public class MainActivity extends AppCompatActivity
                         this
                 );
             }
-            return MedScreens.slot(this, store, session, this);
+            return MedScreens.slot(this, store, session, this, registrationPillbox());
         }
         if (MedScreen.ALARM.equals(screen)) {
             if (store.isAlarmEdit()) {
                 return MedScreens.list(this, store, this, debuggable());
             }
             if (store.draft() != null && store.draft().getSlotIndex() != null) {
-                return MedScreens.slot(this, store, session, this);
+                return MedScreens.slot(this, store, session, this, registrationPillbox());
             }
             return MedScreens.envelope(this, store, session, this, debuggable());
         }
@@ -4400,12 +4402,12 @@ public class MainActivity extends AppCompatActivity
             }
             return;
         }
-        if (hasRegisteredPillbox()) {
-            onReady.run();
+        if (pillboxView == MainScreens.CareView.ABSENT && devicePanel == null && !hasRegisteredPillbox()) {
+            showUnregisteredPillbox();
             return;
         }
-        if (pillboxView == MainScreens.CareView.ABSENT && devicePanel == null) {
-            showUnregisteredPillbox();
+        if (knownPillbox() != null) {
+            onReady.run();
             return;
         }
         if (!beginAccountRequest(getString(R.string.med_into_pillbox))) {
@@ -4444,11 +4446,14 @@ public class MainActivity extends AppCompatActivity
                     return;
                 }
                 SettingsApi.device(getApplicationContext(), target.patientId);
+                CareContracts.Pillbox loaded = CareApi.pillbox(getApplicationContext(), target.patientId);
                 runOnUiThread(() -> {
                     finishAccountRequest();
-                    if (isAlive()) {
-                        onReady.run();
+                    if (!isAlive()) {
+                        return;
                     }
+                    rememberPillbox(loaded);
+                    onReady.run();
                 });
             } catch (ApiException exception) {
                 runOnUiThread(() -> {
@@ -4469,6 +4474,35 @@ public class MainActivity extends AppCompatActivity
                 });
             }
         });
+    }
+
+    private void rememberPillbox(CareContracts.Pillbox loaded) {
+        pillboxEpoch++;
+        pillboxView = MainScreens.CareView.READY;
+        pillboxSnapshot = loaded;
+        publishListPillbox(loaded);
+    }
+
+    private CareContracts.Pillbox knownPillbox() {
+        if (hasCompartments(listPillbox)) {
+            return listPillbox;
+        }
+        if (hasCompartments(pillboxSnapshot)) {
+            return pillboxSnapshot;
+        }
+        return null;
+    }
+
+    private static boolean hasCompartments(CareContracts.Pillbox pillbox) {
+        return pillbox != null && pillbox.compartments != null && !pillbox.compartments.isEmpty();
+    }
+
+    private CareContracts.Pillbox registrationPillbox() {
+        CareContracts.Pillbox known = knownPillbox();
+        if (known != null) {
+            return known;
+        }
+        return pillboxSnapshot != null ? pillboxSnapshot : listPillbox;
     }
 
     private boolean hasRegisteredPillbox() {
@@ -5483,6 +5517,11 @@ public class MainActivity extends AppCompatActivity
 
     @Override
     public void recordServerDose(long doseId, long takenAtMillis) {
+        recordServerDose(doseId, takenAtMillis, false);
+    }
+
+    @Override
+    public void recordServerDose(long doseId, long takenAtMillis, boolean returnToUncheckedList) {
         if (!homeWrites) {
             showMessage(getString(R.string.med_readonly));
             return;
@@ -5494,6 +5533,19 @@ public class MainActivity extends AppCompatActivity
                     HomeContracts.takenAt(takenAtMillis)
             );
             return serverStatusText(dose.status);
+        }, returnToUncheckedList);
+    }
+
+    @Override
+    public void onUncheckedDoseListShown(Dialog dialog) {
+        uncheckedListDialog = dialog;
+        if (dialog == null) {
+            return;
+        }
+        dialog.setOnDismissListener(shown -> {
+            if (uncheckedListDialog == shown) {
+                uncheckedListDialog = null;
+            }
         });
     }
 
@@ -5640,6 +5692,10 @@ public class MainActivity extends AppCompatActivity
     }
 
     private void runHomeWrite(HomeWrite work) {
+        runHomeWrite(work, false);
+    }
+
+    private void runHomeWrite(HomeWrite work, boolean returnToUncheckedList) {
         if (homeWriteBusy) {
             return;
         }
@@ -5654,6 +5710,9 @@ public class MainActivity extends AppCompatActivity
                         return;
                     }
                     showMessage(notice);
+                    if (returnToUncheckedList) {
+                        resumeUncheckedList = true;
+                    }
                     boxTakenWhileWriting = false;
                     reloadServerSurfaces();
                     ignoreBoxTakenUntil = android.os.SystemClock.elapsedRealtime() + 3000L;
@@ -5998,6 +6057,16 @@ public class MainActivity extends AppCompatActivity
         if (show) {
             refresh();
         }
+        if (resumeUncheckedList) {
+            resumeUncheckedList = false;
+            if (show
+                    && view == MainScreens.CareView.READY
+                    && homeToday != null
+                    && homeToday.kind == HomeContracts.Section.Kind.READY
+                    && homeToday.value != null) {
+                RecordScreens.checkServerDoses(this, homeToday.value, this, false);
+            }
+        }
     }
 
     private void loadSchedule(int epoch, java.time.LocalDate date) {
@@ -6231,6 +6300,9 @@ public class MainActivity extends AppCompatActivity
             return;
         }
         notifyCatchUp(dose);
+        if (resumeUncheckedList || (uncheckedListDialog != null && uncheckedListDialog.isShowing())) {
+            return;
+        }
         if (catchUpAsked.contains(dose.scheduledDoseId)) {
             return;
         }

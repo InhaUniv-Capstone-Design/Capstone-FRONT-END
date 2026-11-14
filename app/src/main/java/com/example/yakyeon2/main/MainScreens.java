@@ -239,14 +239,7 @@ public final class MainScreens {
                     ? activity.getString(R.string.api_response_error)
                     : interactions.message);
         } else {
-            String text = activity.getString(R.string.home_interaction, interactions.value.flagged);
-            if (interactions.value.unchecked > 0L) {
-                text = text + "\n" + activity.getString(
-                        R.string.home_interaction_unchecked,
-                        interactions.value.unchecked
-                );
-            }
-            interaction.setText(text);
+            interaction.setText(activity.getString(R.string.home_interaction, interactions.value.flagged));
         }
         if (todayDoses == null || todayDoses.kind != HomeContracts.Section.Kind.READY || todayDoses.value == null) {
             remainingEmpty.setVisibility(View.VISIBLE);
@@ -1101,27 +1094,10 @@ public final class MainScreens {
         notes.append(activity.getString(
                 R.string.graph_summary,
                 bundle.summary.total,
-                bundle.summary.flagged,
-                bundle.summary.unchecked
+                bundle.summary.flagged
         ));
-        if (CareContracts.showsUncheckedNotice(bundle.summary)) {
-            notes.append('\n').append(activity.getString(R.string.graph_unchecked_notice));
-        }
         if (CareContracts.needsSafetyDisclaimer(bundle.summary)) {
             notes.append('\n').append(activity.getString(R.string.graph_not_safety));
-        }
-        StringBuilder unchecked = new StringBuilder();
-        for (CareContracts.GraphNode node : bundle.graph.nodes) {
-            if (node.checked) {
-                continue;
-            }
-            if (unchecked.length() > 0) {
-                unchecked.append(", ");
-            }
-            unchecked.append(node.drugName);
-        }
-        if (unchecked.length() > 0) {
-            notes.append('\n').append(activity.getString(R.string.graph_unchecked_list, unchecked.toString()));
         }
         return notes.toString();
     }

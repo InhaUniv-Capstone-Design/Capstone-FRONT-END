@@ -451,7 +451,7 @@ public final class RecordScreens {
             boolean selected = allowed && sample.getScheduledAtMillis() == origin.getScheduledAtMillis();
             View option = doseOption(activity, title, detail, selected, !firstOption, allowed ? () -> {
                 dialog.dismiss();
-                openTime(activity, store, revisable, host);
+                openTime(activity, store, revisable, host, null);
             } : null);
             firstOption = false;
             options.addView(option);
@@ -464,7 +464,8 @@ public final class RecordScreens {
             AppCompatActivity activity,
             MedicationStore store,
             List<DoseRecord> records,
-            MedScreens.Host host
+            MedScreens.Host host,
+            Runnable reopenList
     ) {
         ZoneId zone = ZoneId.systemDefault();
         DoseRecord sample = records.get(0);
@@ -472,6 +473,7 @@ public final class RecordScreens {
         int[] hour = new int[] {Instant.ofEpochMilli(takenAt[0]).atZone(zone).getHour()};
         int[] minute = new int[] {Instant.ofEpochMilli(takenAt[0]).atZone(zone).getMinute()};
         View sheet = LayoutInflater.from(activity).inflate(R.layout.dialog_taken_time, null);
+        bindTimeIdentity(sheet, sample.getEnvelopeName(), medicineNames(records));
         java.time.ZonedDateTime scheduled = Instant.ofEpochMilli(sample.getScheduledAtMillis()).atZone(zone);
         ((TextView) sheet.findViewById(R.id.text_time_target)).setText(activity.getString(
                 R.string.med_time_target,
@@ -491,7 +493,12 @@ public final class RecordScreens {
         sheet.findViewById(R.id.text_minute_prev).setOnClickListener(v -> shiftClock(zone, takenAt, hour, minute, 0, -1, paint));
         sheet.findViewById(R.id.text_minute_next).setOnClickListener(v -> shiftClock(zone, takenAt, hour, minute, 0, 1, paint));
         Dialog dialog = presentSheet(activity, sheet);
-        sheet.findViewById(R.id.button_time_cancel).setOnClickListener(v -> dialog.dismiss());
+        sheet.findViewById(R.id.button_time_cancel).setOnClickListener(v -> {
+            dialog.dismiss();
+            if (reopenList != null) {
+                reopenList.run();
+            }
+        });
         sheet.findViewById(R.id.button_time_save).setOnClickListener(v -> {
             long now = System.currentTimeMillis();
             boolean saved = false;
@@ -517,6 +524,9 @@ public final class RecordScreens {
                 );
             } else {
                 host.showMessage(activity.getString(R.string.med_readonly));
+            }
+            if (reopenList != null) {
+                reopenList.run();
             }
         });
         dialog.show();
@@ -900,6 +910,15 @@ public final class RecordScreens {
             List<HomeContracts.Dose> doses,
             MedScreens.Host host
     ) {
+        checkServerDoses(activity, doses, host, true);
+    }
+
+    public static void checkServerDoses(
+            AppCompatActivity activity,
+            List<HomeContracts.Dose> doses,
+            MedScreens.Host host,
+            boolean announceIfEmpty
+    ) {
         Instant now = Instant.now();
         List<HomeContracts.Dose> pending = new ArrayList<>();
         if (doses != null) {
@@ -911,13 +930,20 @@ public final class RecordScreens {
         }
         pending.sort(Comparator.comparing(dose -> dose.scheduledAt == null ? "" : dose.scheduledAt));
         if (pending.isEmpty()) {
-            host.showMessage(activity.getString(R.string.home_remaining_empty));
+            if (announceIfEmpty) {
+                host.showMessage(activity.getString(R.string.home_remaining_empty));
+            }
             return;
         }
-        if (pending.size() == 1) {
-            askTakenTime(activity, pending.get(0), host, null);
-            return;
-        }
+        showServerUncheckedList(activity, doses, pending, host);
+    }
+
+    private static void showServerUncheckedList(
+            AppCompatActivity activity,
+            List<HomeContracts.Dose> doses,
+            List<HomeContracts.Dose> pending,
+            MedScreens.Host host
+    ) {
         View sheet = LayoutInflater.from(activity).inflate(R.layout.dialog_dose_sheet, null);
         ((TextView) sheet.findViewById(R.id.text_sheet_title)).setText(R.string.home_overdue_title);
         TextView message = sheet.findViewById(R.id.text_sheet_message);
@@ -932,19 +958,29 @@ public final class RecordScreens {
                     + HomeContracts.clock(dose.scheduledAt);
             View option = doseOption(activity, title, serverDoseDetail(activity, dose), false, !first, () -> {
                 dialog.dismiss();
-                askTakenTime(activity, dose, host, null);
+                askTakenTime(activity, dose, host, null, () -> checkServerDoses(activity, doses, host));
             });
             first = false;
             options.addView(option);
         }
         sheet.findViewById(R.id.button_sheet_cancel).setOnClickListener(v -> dialog.dismiss());
         dialog.show();
+        host.onUncheckedDoseListShown(dialog);
     }
 
     public static void checkLocalDoses(
             AppCompatActivity activity,
             MedicationStore store,
             MedScreens.Host host
+    ) {
+        checkLocalDoses(activity, store, host, true);
+    }
+
+    private static void checkLocalDoses(
+            AppCompatActivity activity,
+            MedicationStore store,
+            MedScreens.Host host,
+            boolean announceIfEmpty
     ) {
         ZoneId zone = ZoneId.systemDefault();
         long now = System.currentTimeMillis();
@@ -971,13 +1007,21 @@ public final class RecordScreens {
             group.add(record);
         }
         if (groups.isEmpty()) {
-            host.showMessage(activity.getString(R.string.home_remaining_empty));
+            if (announceIfEmpty) {
+                host.showMessage(activity.getString(R.string.home_remaining_empty));
+            }
             return;
         }
-        if (groups.size() == 1) {
-            openTime(activity, store, groups.values().iterator().next(), host);
-            return;
-        }
+        showLocalUncheckedList(activity, store, host, groups);
+    }
+
+    private static void showLocalUncheckedList(
+            AppCompatActivity activity,
+            MedicationStore store,
+            MedScreens.Host host,
+            LinkedHashMap<String, List<DoseRecord>> groups
+    ) {
+        ZoneId zone = ZoneId.systemDefault();
         View sheet = LayoutInflater.from(activity).inflate(R.layout.dialog_dose_sheet, null);
         ((TextView) sheet.findViewById(R.id.text_sheet_title)).setText(R.string.home_overdue_title);
         TextView message = sheet.findViewById(R.id.text_sheet_message);
@@ -996,13 +1040,68 @@ public final class RecordScreens {
             List<DoseRecord> chosen = group;
             View option = doseOption(activity, title, detail, false, !first, () -> {
                 dialog.dismiss();
-                openTime(activity, store, chosen, host);
+                openTime(activity, store, chosen, host, () -> checkLocalDoses(activity, store, host, false));
             });
             first = false;
             options.addView(option);
         }
         sheet.findViewById(R.id.button_sheet_cancel).setOnClickListener(v -> dialog.dismiss());
         dialog.show();
+    }
+
+    private static void bindTimeIdentity(View sheet, String hospital, String medicines) {
+        TextView hospitalView = sheet.findViewById(R.id.text_time_hospital);
+        TextView medicineView = sheet.findViewById(R.id.text_time_medicines);
+        View block = sheet.findViewById(R.id.time_dose_identity);
+        String hospitalText = hospital == null ? "" : hospital.trim();
+        String medicineText = medicines == null ? "" : medicines.trim();
+        hospitalView.setText(hospitalText);
+        medicineView.setText(medicineText);
+        hospitalView.setVisibility(hospitalText.isEmpty() ? View.GONE : View.VISIBLE);
+        medicineView.setVisibility(medicineText.isEmpty() ? View.GONE : View.VISIBLE);
+        block.setVisibility(hospitalText.isEmpty() && medicineText.isEmpty() ? View.GONE : View.VISIBLE);
+    }
+
+    private static String medicineNames(List<DoseRecord> records) {
+        StringBuilder names = new StringBuilder();
+        if (records == null) {
+            return "";
+        }
+        for (DoseRecord record : records) {
+            if (record == null || record.getMedicineName() == null) {
+                continue;
+            }
+            String name = record.getMedicineName().trim();
+            if (name.isEmpty()) {
+                continue;
+            }
+            if (names.length() > 0) {
+                names.append(", ");
+            }
+            names.append(name);
+        }
+        return names.toString();
+    }
+
+    private static String serverMedicineNames(HomeContracts.Dose dose) {
+        StringBuilder names = new StringBuilder();
+        if (dose == null || dose.medications == null) {
+            return "";
+        }
+        for (HomeContracts.DoseDrug drug : dose.medications) {
+            if (drug == null || drug.drugName == null) {
+                continue;
+            }
+            String name = drug.drugName.trim();
+            if (name.isEmpty()) {
+                continue;
+            }
+            if (names.length() > 0) {
+                names.append(", ");
+            }
+            names.append(name);
+        }
+        return names.toString();
     }
 
     private static String serverDoseDetail(AppCompatActivity activity, HomeContracts.Dose dose) {
@@ -1033,11 +1132,22 @@ public final class RecordScreens {
             MedScreens.Host host,
             String title
     ) {
+        return askTakenTime(activity, dose, host, title, null);
+    }
+
+    public static Dialog askTakenTime(
+            AppCompatActivity activity,
+            HomeContracts.Dose dose,
+            MedScreens.Host host,
+            String title,
+            Runnable reopenList
+    ) {
         ZoneId zone = ZoneId.systemDefault();
         long[] takenAt = new long[] {System.currentTimeMillis()};
         int[] hour = new int[] {Instant.ofEpochMilli(takenAt[0]).atZone(zone).getHour()};
         int[] minute = new int[] {Instant.ofEpochMilli(takenAt[0]).atZone(zone).getMinute()};
         View sheet = LayoutInflater.from(activity).inflate(R.layout.dialog_taken_time, null);
+        bindTimeIdentity(sheet, dose.hospitalName, serverMedicineNames(dose));
         if (title != null && !title.isEmpty()) {
             ((TextView) sheet.findViewById(R.id.text_time_title)).setText(title);
         }
@@ -1058,10 +1168,15 @@ public final class RecordScreens {
         sheet.findViewById(R.id.text_minute_prev).setOnClickListener(v -> shiftClock(zone, takenAt, hour, minute, 0, -1, paint));
         sheet.findViewById(R.id.text_minute_next).setOnClickListener(v -> shiftClock(zone, takenAt, hour, minute, 0, 1, paint));
         Dialog dialog = presentSheet(activity, sheet);
-        sheet.findViewById(R.id.button_time_cancel).setOnClickListener(v -> dialog.dismiss());
+        sheet.findViewById(R.id.button_time_cancel).setOnClickListener(v -> {
+            dialog.dismiss();
+            if (reopenList != null) {
+                reopenList.run();
+            }
+        });
         sheet.findViewById(R.id.button_time_save).setOnClickListener(v -> {
             dialog.dismiss();
-            host.recordServerDose(dose.scheduledDoseId, takenAt[0]);
+            host.recordServerDose(dose.scheduledDoseId, takenAt[0], reopenList != null);
         });
         dialog.show();
         return dialog;

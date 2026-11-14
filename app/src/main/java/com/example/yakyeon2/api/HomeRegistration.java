@@ -49,8 +49,7 @@ public final class HomeRegistration {
         try {
             JSONArray medications = new JSONArray();
             LocalDate earliest = null;
-            List<String> scheduleSlots = new ArrayList<>();
-            List<String> scheduleTimes = new ArrayList<>();
+            java.util.Map<String, Integer> schedule = new java.util.LinkedHashMap<>();
             for (MedicineDraft medicine : draft.medicines()) {
                 if (!medicine.isConfirmed() || medicine.getName() == null || medicine.getName().trim().isEmpty()) {
                     return blocked(Block.INCOMPLETE);
@@ -86,14 +85,14 @@ public final class HomeRegistration {
                         return blocked(Block.INCOMPLETE);
                     }
                     for (String slot : slots) {
-                        if (!scheduleSlots.contains(slot)) {
-                            Integer minutes = minutesFor(draft, slot);
-                            if (minutes == null) {
-                                return blocked(Block.INCOMPLETE);
-                            }
-                            scheduleSlots.add(slot);
-                            scheduleTimes.add(clock(minutes));
+                        if (schedule.containsKey(slot)) {
+                            continue;
                         }
+                        Integer minutes = baseMinutes(draft, slot);
+                        if (minutes == null) {
+                            return blocked(Block.INCOMPLETE);
+                        }
+                        schedule.put(slot, minutes);
                     }
                 }
                 String dose = medicine.getDoseText();
@@ -161,7 +160,7 @@ public final class HomeRegistration {
             return new Prepared(
                     Block.NONE,
                     prescription,
-                    scheduleSlots.isEmpty() ? null : HomeContracts.scheduleBody(scheduleSlots, scheduleTimes),
+                    schedule.isEmpty() ? null : scheduleBody(schedule),
                     compartment
             );
         } catch (ApiException | JSONException exception) {
@@ -177,20 +176,52 @@ public final class HomeRegistration {
         return "BEFORE_MEAL".equals(meal) || "AFTER_MEAL".equals(meal) || "WITH_MEAL".equals(meal);
     }
 
-    private static Integer minutesFor(EnvelopeDraft draft, String slot) {
-        DoseRound round;
-        if (HomeContracts.SLOT_MORNING.equals(slot)) {
-            round = DoseRound.MORNING;
-        } else if (HomeContracts.SLOT_LUNCH.equals(slot)) {
-            round = DoseRound.LUNCH;
-        } else if (HomeContracts.SLOT_DINNER.equals(slot)) {
-            round = DoseRound.EVENING;
-        } else if (HomeContracts.SLOT_BEDTIME.equals(slot)) {
-            round = DoseRound.BEDTIME;
-        } else {
+    /**
+     * One dose clock per slot, in morning, lunch, evening, bedtime order.
+     * The stored time is the clock the user set.
+     */
+    private static JSONObject scheduleBody(java.util.Map<String, Integer> baseBySlot) throws ApiException {
+        String[] order = new String[] {
+                HomeContracts.SLOT_MORNING,
+                HomeContracts.SLOT_LUNCH,
+                HomeContracts.SLOT_DINNER,
+                HomeContracts.SLOT_BEDTIME
+        };
+        List<String> slots = new ArrayList<>();
+        List<String> times = new ArrayList<>();
+        for (String slot : order) {
+            Integer base = baseBySlot.get(slot);
+            if (base == null) {
+                continue;
+            }
+            slots.add(slot);
+            times.add(clock(base));
+        }
+        return HomeContracts.scheduleBody(slots, times);
+    }
+
+    private static Integer baseMinutes(EnvelopeDraft draft, String slot) {
+        DoseRound round = roundFor(slot);
+        if (round == null) {
             return null;
         }
         return draft.alarmMinutes().get(round);
+    }
+
+    private static DoseRound roundFor(String slot) {
+        if (HomeContracts.SLOT_MORNING.equals(slot)) {
+            return DoseRound.MORNING;
+        }
+        if (HomeContracts.SLOT_LUNCH.equals(slot)) {
+            return DoseRound.LUNCH;
+        }
+        if (HomeContracts.SLOT_DINNER.equals(slot)) {
+            return DoseRound.EVENING;
+        }
+        if (HomeContracts.SLOT_BEDTIME.equals(slot)) {
+            return DoseRound.BEDTIME;
+        }
+        return null;
     }
 
     private static String clock(int minutes) {

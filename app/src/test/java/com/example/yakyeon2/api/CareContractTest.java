@@ -109,6 +109,10 @@ public class CareContractTest {
         assertFalse(CareContracts.compartmentSelectable(pillbox.compartments.get(0), 8L));
         assertFalse(CareContracts.compartmentSelectable(pillbox.compartments.get(1), 7L));
         assertTrue(CareContracts.compartmentSelectable(pillbox.compartments.get(2), 7L));
+        assertTrue(CareContracts.compartmentInUse(pillbox, 0));
+        assertTrue(CareContracts.compartmentInUse(pillbox, 1));
+        assertFalse(CareContracts.compartmentInUse(pillbox, 2));
+        assertFalse(CareContracts.compartmentInUse(null, 0));
     }
 
     @Test

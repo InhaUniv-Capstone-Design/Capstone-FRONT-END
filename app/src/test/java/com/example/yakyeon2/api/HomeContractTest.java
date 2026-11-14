@@ -420,6 +420,86 @@ public class HomeContractTest {
     }
 
     @Test
+    public void mealRelationKeepsTheChosenClock() throws Exception {
+        Assert.assertEquals("08:00", doseTime(DoseTiming.BEFORE_MEAL, null));
+        Assert.assertEquals("08:00", doseTime(DoseTiming.WITH_MEAL, null));
+        Assert.assertEquals("08:00", doseTime(DoseTiming.AFTER_MEAL_30, null));
+        Assert.assertEquals("08:00", doseTime(null, "WITH_MEAL"));
+    }
+
+    @Test
+    public void confirmedMedicinesRegisterWhenAnEarlierSlotComesLater() throws Exception {
+        EnvelopeDraft ready = draft();
+        MedicineDraft evening = ready.medicines().get(0);
+        evening.setName("저녁약");
+        evening.rounds().add(DoseRound.EVENING);
+        evening.timings().add(DoseTiming.AFTER_MEAL_30);
+        evening.setConfirmed(true);
+        MedicineDraft morning = new MedicineDraft();
+        morning.setName("아침약");
+        morning.setStart(LocalDate.parse("2026-10-27"));
+        morning.setEnd(LocalDate.parse("2026-11-02"));
+        morning.rounds().add(DoseRound.MORNING);
+        morning.timings().add(DoseTiming.BEFORE_MEAL);
+        morning.setConfirmed(true);
+        ready.medicines().add(morning);
+        MedicineDraft lunch = new MedicineDraft();
+        lunch.setName("점심약");
+        lunch.setStart(LocalDate.parse("2026-10-27"));
+        lunch.setEnd(LocalDate.parse("2026-11-02"));
+        lunch.rounds().add(DoseRound.LUNCH);
+        lunch.timings().add(DoseTiming.WITH_MEAL);
+        lunch.setConfirmed(true);
+        ready.medicines().add(lunch);
+        ready.alarmMinutes().put(DoseRound.MORNING, 8 * 60);
+        ready.alarmMinutes().put(DoseRound.LUNCH, 13 * 60);
+        ready.alarmMinutes().put(DoseRound.EVENING, 18 * 60);
+        HomeRegistration.Prepared prepared = HomeRegistration.prepare(ready);
+        Assert.assertEquals(HomeRegistration.Block.NONE, prepared.block);
+        JSONArray settings = prepared.schedule.getJSONArray("settings");
+        Assert.assertEquals("MORNING", settings.getJSONObject(0).getString("timing_slot"));
+        Assert.assertEquals("08:00", settings.getJSONObject(0).getString("dose_time"));
+        Assert.assertEquals("LUNCH", settings.getJSONObject(1).getString("timing_slot"));
+        Assert.assertEquals("13:00", settings.getJSONObject(1).getString("dose_time"));
+        Assert.assertEquals("DINNER", settings.getJSONObject(2).getString("timing_slot"));
+        Assert.assertEquals("18:00", settings.getJSONObject(2).getString("dose_time"));
+    }
+
+    @Test
+    public void mealOffsetThatBreaksTheGapKeepsTheChosenClock() throws Exception {
+        EnvelopeDraft ready = draft();
+        MedicineDraft medicine = ready.medicines().get(0);
+        medicine.rounds().add(DoseRound.EVENING);
+        medicine.rounds().add(DoseRound.BEDTIME);
+        medicine.timings().add(DoseTiming.AFTER_MEAL_30);
+        medicine.setConfirmed(true);
+        ready.alarmMinutes().put(DoseRound.EVENING, 18 * 60);
+        ready.alarmMinutes().put(DoseRound.BEDTIME, 22 * 60);
+        HomeRegistration.Prepared prepared = HomeRegistration.prepare(ready);
+        Assert.assertEquals(HomeRegistration.Block.NONE, prepared.block);
+        JSONArray settings = prepared.schedule.getJSONArray("settings");
+        Assert.assertEquals("18:00", settings.getJSONObject(0).getString("dose_time"));
+        Assert.assertEquals("22:00", settings.getJSONObject(1).getString("dose_time"));
+    }
+
+    private static String doseTime(DoseTiming timing, String mealRelation) throws Exception {
+        EnvelopeDraft ready = draft();
+        MedicineDraft medicine = ready.medicines().get(0);
+        medicine.rounds().add(DoseRound.MORNING);
+        medicine.setConfirmed(true);
+        if (timing != null) {
+            medicine.timings().add(timing);
+        }
+        if (mealRelation != null) {
+            medicine.setMealRelation(mealRelation, null);
+        }
+        ready.alarmMinutes().put(DoseRound.MORNING, 8 * 60);
+        HomeRegistration.Prepared prepared = HomeRegistration.prepare(ready);
+        Assert.assertEquals(HomeRegistration.Block.NONE, prepared.block);
+        return prepared.schedule.getJSONArray("settings").getJSONObject(0).getString("dose_time");
+    }
+
+    @Test
     public void takenBodyAndTermsVersion() throws Exception {
         Assert.assertNull(HomeContracts.takenBody(null));
         Assert.assertEquals(

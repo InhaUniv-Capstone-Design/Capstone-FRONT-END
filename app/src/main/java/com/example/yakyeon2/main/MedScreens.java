@@ -92,6 +92,10 @@ public final class MedScreens {
 
         void recordServerDose(long doseId, long takenAtMillis);
 
+        void recordServerDose(long doseId, long takenAtMillis, boolean returnToUncheckedList);
+
+        void onUncheckedDoseListShown(Dialog dialog);
+
         void revertServerDose(long doseId);
 
         void selectServerScheduleDate(java.time.LocalDate date);
@@ -149,7 +153,12 @@ public final class MedScreens {
         LinearLayout stopped = root.findViewById(R.id.med_stopped);
         boolean anyActive = false;
         boolean anyStopped = false;
-        for (SavedEnvelope envelope : store.envelopes()) {
+        List<SavedEnvelope> ordered = new ArrayList<>(store.envelopes());
+        ordered.sort((left, right) -> Long.compare(
+                right.getRegisteredAtMillis(),
+                left.getRegisteredAtMillis()
+        ));
+        for (SavedEnvelope envelope : ordered) {
             LinearLayout target = envelope.isStopped() ? stopped : active;
             if (envelope.isStopped()) {
                 anyStopped = true;
@@ -333,6 +342,16 @@ public final class MedScreens {
     }
 
     public static View slot(AppCompatActivity activity, MedicationStore store, YakyeonSession session, Host host) {
+        return slot(activity, store, session, host, null);
+    }
+
+    public static View slot(
+            AppCompatActivity activity,
+            MedicationStore store,
+            YakyeonSession session,
+            Host host,
+            CareContracts.Pillbox serverPillbox
+    ) {
         if (store.slotAssignEnvelopeId() != null) {
             return savedEnvelopeSlot(activity, store, session, host);
         }
@@ -360,24 +379,30 @@ public final class MedScreens {
         }
         LinearLayout list = root.findViewById(R.id.slot_list);
         boolean serverDraft = host.usesServerRecords();
-        for (int index = 0; index < (serverDraft ? 3 : session.slotCount()); index++) {
-            boolean occupied = !serverDraft && session.isSlotOccupied(index);
-            boolean selected = draft != null && draft.getSlotIndex() != null && draft.getSlotIndex() == index;
-            int slotIndex = index;
-            View row = slotChoice(activity, store, index, occupied, selected);
-            row.setOnClickListener(v -> {
-                if (occupied || draft == null) {
-                    host.showMessage(activity.getString(R.string.pillbox_slot_full));
-                    return;
-                }
-                if (draft.getSlotIndex() != null && draft.getSlotIndex() == slotIndex) {
-                    draft.setSlotIndex(null);
-                } else {
-                    draft.setSlotIndex(slotIndex);
-                }
-                host.refresh();
-            });
-            list.addView(row);
+        if (serverDraft) {
+            addServerDraftSlots(activity, store, draft, serverPillbox, list, host);
+        } else {
+            for (int index = 0; index < session.slotCount(); index++) {
+                boolean occupied = session.isSlotOccupied(index);
+                boolean selected = draft != null && draft.getSlotIndex() != null && draft.getSlotIndex() == index;
+                int slotIndex = index;
+                View row = slotChoice(activity, store, index, occupied, selected);
+                row.setOnClickListener(v -> {
+                    if (occupied || draft == null) {
+                        if (occupied) {
+                            host.showMessage(activity.getString(R.string.pillbox_slot_full));
+                        }
+                        return;
+                    }
+                    if (draft.getSlotIndex() != null && draft.getSlotIndex() == slotIndex) {
+                        draft.setSlotIndex(null);
+                    } else {
+                        draft.setSlotIndex(slotIndex);
+                    }
+                    host.refresh();
+                });
+                list.addView(row);
+            }
         }
         root.findViewById(R.id.button_slot_without).setVisibility(View.GONE);
         root.findViewById(R.id.button_slot_done).setOnClickListener(v -> {
@@ -385,9 +410,12 @@ public final class MedScreens {
                 host.showMessage(activity.getString(R.string.med_slot_need));
                 return;
             }
-            if (draft.getSlotIndex() != null
-                    && !host.usesServerRecords()
-                    && session.isSlotOccupied(draft.getSlotIndex())) {
+            if (draft.getSlotIndex() != null && slotTaken(
+                    host.usesServerRecords(),
+                    serverPillbox,
+                    session,
+                    draft.getSlotIndex()
+            )) {
                 host.showMessage(activity.getString(R.string.pillbox_slot_full));
                 return;
             }
@@ -441,7 +469,14 @@ public final class MedScreens {
                     continue;
                 }
                 any = true;
-                rounds.addView(alarmRound(activity, minutes, selected, round, root));
+                rounds.addView(alarmRound(
+                        activity,
+                        minutes,
+                        selected,
+                        round,
+                        root,
+                        false
+                ));
             }
         }
         empty.setVisibility(any ? View.GONE : View.VISIBLE);
@@ -503,7 +538,8 @@ public final class MedScreens {
             Map<DoseRound, Integer> minutes,
             Set<DoseRound> selected,
             DoseRound round,
-            View dialogRoot
+            View dialogRoot,
+            boolean fixed
     ) {
         View row = LayoutInflater.from(activity).inflate(R.layout.item_alarm_round, null);
         TextView name = row.findViewById(R.id.text_round_name);
@@ -513,6 +549,10 @@ public final class MedScreens {
                 round,
                 selected.contains(round)
         ));
+        if (fixed) {
+            lockAlarmWheel(row);
+            return row;
+        }
         row.findViewById(R.id.text_hour_prev).setOnClickListener(v ->
                 stepAlarm(activity, minutes, selected, round, row, dialogRoot, true, -1));
         row.findViewById(R.id.text_hour_next).setOnClickListener(v ->
@@ -522,6 +562,21 @@ public final class MedScreens {
         row.findViewById(R.id.text_minute_next).setOnClickListener(v ->
                 stepAlarm(activity, minutes, selected, round, row, dialogRoot, false, 1));
         return row;
+    }
+
+    private static void lockAlarmWheel(View row) {
+        int[] arrows = new int[] {
+                R.id.text_hour_prev,
+                R.id.text_hour_next,
+                R.id.text_minute_prev,
+                R.id.text_minute_next
+        };
+        for (int id : arrows) {
+            TextView arrow = row.findViewById(id);
+            arrow.setOnClickListener(null);
+            arrow.setClickable(false);
+            arrow.setAlpha(0.35f);
+        }
     }
 
     private static void stepAlarm(
@@ -845,21 +900,14 @@ public final class MedScreens {
         periodStart.setOnClickListener(v -> pickDate(activity, medicine.getStart(), start -> {
             medicine.setStart(start);
             paintDateField(activity, periodStart, start, R.string.med_period_start);
+            syncConfirm(activity, row, medicine);
         }));
         periodEnd.setOnClickListener(v -> pickDate(activity, medicine.getEnd(), end -> {
             medicine.setEnd(end);
             paintDateField(activity, periodEnd, end, R.string.med_period_end);
+            syncConfirm(activity, row, medicine);
         }));
-        CheckBox confirm = row.findViewById(R.id.check_confirmed);
-        confirm.setChecked(medicine.isConfirmed());
-        confirm.setOnCheckedChangeListener((button, checked) -> {
-            if (checked && !canConfirm(medicine)) {
-                button.setChecked(false);
-                ShortMessage.show(row, activity.getString(R.string.med_required));
-                return;
-            }
-            medicine.setConfirmed(checked);
-        });
+        bindConfirm(activity, row, medicine);
         row.findViewById(R.id.button_delete_med).setOnClickListener(v -> ConfirmDialog.show(
                 activity,
                 activity.getString(R.string.med_delete_title),
@@ -957,11 +1005,14 @@ public final class MedScreens {
         TextView searchState = root.findViewById(R.id.text_search_state);
         searchState.setText(nameLine(activity, medicine.getName()));
         root.findViewById(R.id.button_search_med).setOnClickListener(v ->
-                pickMedicineName(activity, medicine, host, () -> searchState.setText(
-                        medicine.getDrugId() == null
-                                ? nameLine(activity, medicine.getName())
-                                : displayName(activity, medicine.getName())
-                )));
+                pickMedicineName(activity, medicine, host, () -> {
+                    searchState.setText(
+                            medicine.getDrugId() == null
+                                    ? nameLine(activity, medicine.getName())
+                                    : displayName(activity, medicine.getName())
+                    );
+                    syncConfirm(activity, root, medicine);
+                }));
         View save = root.findViewById(R.id.button_save_med);
         View confirmed = root.findViewById(R.id.check_confirmed);
         View without = root.findViewById(R.id.button_without_pillbox);
@@ -975,17 +1026,24 @@ public final class MedScreens {
         }
         android.widget.Button amount = root.findViewById(R.id.button_amount);
         amount.setText(draftAmountLabel(activity, medicine));
-        amount.setOnClickListener(v -> showAmountPicker(activity, medicine, () ->
-                amount.setText(draftAmountLabel(activity, medicine))));
-        bindRound(root.findViewById(R.id.check_morning), medicine, DoseRound.MORNING, root, activity);
-        bindRound(root.findViewById(R.id.check_lunch), medicine, DoseRound.LUNCH, root, activity);
-        bindRound(root.findViewById(R.id.check_evening), medicine, DoseRound.EVENING, root, activity);
-        bindRound(root.findViewById(R.id.check_bedtime), medicine, DoseRound.BEDTIME, root, activity);
-        updateFrequency(activity, root, medicine);
+        amount.setOnClickListener(v -> showAmountPicker(activity, medicine, () -> {
+            amount.setText(draftAmountLabel(activity, medicine));
+            syncConfirm(activity, root, medicine);
+        }));
         android.widget.Button timing = root.findViewById(R.id.button_timing);
+        Runnable refreshChoices = () -> {
+            ensureAutoTimings(medicine);
+            timing.setText(timingsText(activity, medicine));
+            updateFrequency(activity, root, medicine);
+            syncConfirm(activity, root, medicine);
+        };
+        bindRound(root.findViewById(R.id.check_morning), medicine, DoseRound.MORNING, root, activity, refreshChoices);
+        bindRound(root.findViewById(R.id.check_lunch), medicine, DoseRound.LUNCH, root, activity, refreshChoices);
+        bindRound(root.findViewById(R.id.check_evening), medicine, DoseRound.EVENING, root, activity, refreshChoices);
+        bindRound(root.findViewById(R.id.check_bedtime), medicine, DoseRound.BEDTIME, root, activity, refreshChoices);
+        updateFrequency(activity, root, medicine);
         timing.setText(timingsText(activity, medicine));
-        timing.setOnClickListener(v -> pickTimings(activity, medicine, () ->
-                timing.setText(timingsText(activity, medicine))));
+        timing.setOnClickListener(v -> pickTimings(activity, medicine, refreshChoices));
         android.widget.Button start = root.findViewById(R.id.button_start);
         android.widget.Button end = root.findViewById(R.id.button_end);
         start.setText(dateLabel(activity, activity.getString(R.string.med_period_start), medicine.getStart()));
@@ -993,21 +1051,14 @@ public final class MedScreens {
         start.setOnClickListener(v -> pickDate(activity, medicine.getStart(), picked -> {
             medicine.setStart(picked);
             start.setText(dateLabel(activity, activity.getString(R.string.med_period_start), picked));
+            syncConfirm(activity, root, medicine);
         }));
         end.setOnClickListener(v -> pickDate(activity, medicine.getEnd(), picked -> {
             medicine.setEnd(picked);
             end.setText(dateLabel(activity, activity.getString(R.string.med_period_end), picked));
+            syncConfirm(activity, root, medicine);
         }));
-        CheckBox confirm = root.findViewById(R.id.check_confirmed);
-        confirm.setChecked(medicine.isConfirmed());
-        confirm.setOnCheckedChangeListener((button, checked) -> {
-            if (checked && !canConfirm(medicine)) {
-                button.setChecked(false);
-                ShortMessage.show(root, activity.getString(R.string.med_required));
-                return;
-            }
-            medicine.setConfirmed(checked);
-        });
+        bindConfirm(activity, root, medicine);
         root.findViewById(R.id.button_delete_med).setOnClickListener(v -> {
             if (savedEdit) {
                 onDelete.run();
@@ -1156,6 +1207,7 @@ public final class MedScreens {
             ensureAutoTimings(medicine);
             bindDraftChoices(row, medicine, activity);
             updateFrequency(activity, row, medicine);
+            syncConfirm(activity, row, medicine);
         };
         bindRound(row.findViewById(R.id.check_morning), medicine, DoseRound.MORNING, row, activity, refresh);
         bindRound(row.findViewById(R.id.check_lunch), medicine, DoseRound.LUNCH, row, activity, refresh);
@@ -1205,11 +1257,15 @@ public final class MedScreens {
         }
         if (medicine.isPrn()) {
             medicine.rounds().clear();
+            clearMealTiming(medicine);
             medicine.timings().remove(DoseTiming.BEDTIME);
             medicine.timings().add(DoseTiming.ALWAYS);
             return;
         }
         medicine.timings().remove(DoseTiming.ALWAYS);
+        if (!MedicationRules.hasMealRound(medicine)) {
+            clearMealTiming(medicine);
+        }
         if (medicine.rounds().contains(DoseRound.BEDTIME)) {
             medicine.timings().add(DoseTiming.BEDTIME);
         } else {
@@ -1217,13 +1273,27 @@ public final class MedScreens {
         }
     }
 
+    private static void clearMealTiming(MedicineDraft medicine) {
+        medicine.timings().remove(DoseTiming.BEFORE_MEAL);
+        medicine.timings().remove(DoseTiming.AFTER_MEAL_30);
+        medicine.timings().remove(DoseTiming.WITH_MEAL);
+        medicine.clearMealRelation();
+    }
+
     private static void bindTiming(View row, CheckBox box, MedicineDraft medicine, DoseTiming timing) {
         if (box == null) {
             return;
         }
+        boolean mealRounds = MedicationRules.hasMealRound(medicine);
         box.setOnCheckedChangeListener(null);
-        box.setChecked(timingSelected(medicine, timing));
+        box.setEnabled(mealRounds);
+        box.setAlpha(mealRounds ? 1f : 0.4f);
+        box.setChecked(mealRounds && timingSelected(medicine, timing));
         box.setOnCheckedChangeListener((button, checked) -> {
+            if (!MedicationRules.hasMealRound(medicine)) {
+                button.setChecked(false);
+                return;
+            }
             medicine.clearMealRelation();
             if (checked) {
                 medicine.timings().remove(DoseTiming.BEFORE_MEAL);
@@ -1237,9 +1307,45 @@ public final class MedScreens {
             bindTiming(row, row.findViewById(R.id.check_timing_after), medicine, DoseTiming.AFTER_MEAL_30);
             bindTiming(row, row.findViewById(R.id.check_timing_with), medicine, DoseTiming.WITH_MEAL);
             if (row.getContext() instanceof AppCompatActivity) {
-                updateFrequency((AppCompatActivity) row.getContext(), row, medicine);
+                AppCompatActivity activity = (AppCompatActivity) row.getContext();
+                updateFrequency(activity, row, medicine);
+                syncConfirm(activity, row, medicine);
             }
         });
+    }
+
+    private static void bindConfirm(AppCompatActivity activity, View root, MedicineDraft medicine) {
+        CheckBox confirm = root.findViewById(R.id.check_confirmed);
+        if (confirm == null) {
+            return;
+        }
+        if (medicine.isConfirmed() && !canConfirm(medicine)) {
+            medicine.setConfirmed(false);
+        }
+        confirm.setOnCheckedChangeListener(null);
+        confirm.setChecked(medicine.isConfirmed());
+        confirm.setOnCheckedChangeListener((button, checked) -> {
+            if (checked && !canConfirm(medicine)) {
+                button.setChecked(false);
+                ShortMessage.show(root, activity.getString(R.string.med_required));
+                medicine.setConfirmed(false);
+                return;
+            }
+            medicine.setConfirmed(checked);
+        });
+    }
+
+    private static void syncConfirm(AppCompatActivity activity, View root, MedicineDraft medicine) {
+        if (medicine != null && medicine.isConfirmed() && !canConfirm(medicine)) {
+            medicine.setConfirmed(false);
+        }
+        CheckBox confirm = root.findViewById(R.id.check_confirmed);
+        if (confirm == null || medicine == null) {
+            return;
+        }
+        if (confirm.isChecked() != medicine.isConfirmed()) {
+            confirm.setChecked(medicine.isConfirmed());
+        }
     }
 
     static boolean timingSelected(MedicineDraft medicine, DoseTiming timing) {
@@ -1396,6 +1502,9 @@ public final class MedScreens {
             @Override
             public void afterTextChanged(Editable s) {
                 applyTypedAmount(medicine, s == null ? "" : s.toString(), chosenUnit[0]);
+                if (row.getContext() instanceof AppCompatActivity) {
+                    syncConfirm((AppCompatActivity) row.getContext(), row, medicine);
+                }
             }
         });
         number.setOnFocusChangeListener((view, hasFocus) -> {
@@ -1412,6 +1521,7 @@ public final class MedScreens {
                         paintUnit(activity, unitView, chosenUnit[0]);
                         applyTypedAmount(medicine, number.getText().toString(), chosenUnit[0]);
                         warnInvalidAmount(activity, row, number.getText().toString(), chosenUnit[0]);
+                        syncConfirm(activity, row, medicine);
                     })
                     .show();
         });
@@ -1596,12 +1706,91 @@ public final class MedScreens {
         }
     }
 
+    private static void addServerDraftSlots(
+            AppCompatActivity activity,
+            MedicationStore store,
+            EnvelopeDraft draft,
+            CareContracts.Pillbox serverPillbox,
+            LinearLayout list,
+            Host host
+    ) {
+        if (draft != null && draft.getSlotIndex() != null
+                && !newCompartmentSelectable(serverPillbox, draft.getSlotIndex())) {
+            draft.setSlotIndex(null);
+        }
+        List<CareContracts.Compartment> compartments = serverPillbox == null
+                ? java.util.Collections.emptyList()
+                : serverPillbox.compartments;
+        for (CareContracts.Compartment compartment : compartments) {
+            if (compartment == null || !CareContracts.compartmentNoAllowed(compartment.compartmentNo)) {
+                continue;
+            }
+            int slotIndex = (int) compartment.compartmentNo - 1;
+            boolean occupied = !CareContracts.compartmentSelectable(compartment, 0L);
+            boolean selected = draft != null && draft.getSlotIndex() != null && draft.getSlotIndex() == slotIndex;
+            String hospital = compartment.hospitalName == null ? null : compartment.hospitalName.trim();
+            View row = slotChoice(
+                    activity,
+                    store,
+                    slotIndex,
+                    occupied,
+                    selected,
+                    hospital == null || hospital.isEmpty() ? null : hospital
+            );
+            row.setOnClickListener(v -> {
+                if (occupied || draft == null) {
+                    if (occupied) {
+                        host.showMessage(activity.getString(R.string.pillbox_slot_full));
+                    }
+                    return;
+                }
+                if (draft.getSlotIndex() != null && draft.getSlotIndex() == slotIndex) {
+                    draft.setSlotIndex(null);
+                } else {
+                    draft.setSlotIndex(slotIndex);
+                }
+                host.refresh();
+            });
+            list.addView(row);
+        }
+    }
+
+    private static boolean newCompartmentSelectable(CareContracts.Pillbox pillbox, int slotIndex) {
+        return CareContracts.compartmentSelectable(
+                CareContracts.compartmentByNo(pillbox, slotIndex + 1L),
+                0L
+        );
+    }
+
+    private static boolean slotTaken(
+            boolean serverDraft,
+            CareContracts.Pillbox serverPillbox,
+            YakyeonSession session,
+            int index
+    ) {
+        if (serverDraft) {
+            return !newCompartmentSelectable(serverPillbox, index);
+        }
+        return session.isSlotOccupied(index);
+    }
+
     private static View slotChoice(
             AppCompatActivity activity,
             MedicationStore store,
             int index,
             boolean occupied,
             boolean selected
+    ) {
+        return slotChoice(activity, store, index, occupied, selected, null);
+    }
+
+    private static View slotChoice(
+            AppCompatActivity activity,
+            MedicationStore store,
+            int index,
+            boolean occupied,
+            boolean selected,
+            String serverHospital
     ) {
         View card = LayoutInflater.from(activity).inflate(R.layout.item_slot_choice, null);
         if (occupied) {
@@ -1617,7 +1806,7 @@ public final class MedScreens {
         TextView badge = card.findViewById(R.id.text_choice_badge);
         android.widget.ImageView state = card.findViewById(R.id.icon_choice_state);
         if (occupied) {
-            String hospital = hospitalInSlot(store, index);
+            String hospital = serverHospital != null ? serverHospital : hospitalInSlot(store, index);
             detail.setText(hospital == null
                     ? activity.getString(R.string.pillbox_slot_full)
                     : activity.getString(R.string.pillbox_slot_locked, hospital));
@@ -1781,6 +1970,7 @@ public final class MedScreens {
                     if (!afterChecked && hadAfterPhrase) {
                         medicine.clearMealRelation();
                     }
+                    ensureAutoTimings(medicine);
                     after.run();
                 })
                 .show();
@@ -1926,8 +2116,9 @@ public final class MedScreens {
             return root;
         }
         java.util.List<HomeContracts.Prescription> rows = prescriptions == null
-                ? java.util.Collections.emptyList()
-                : prescriptions;
+                ? new ArrayList<>()
+                : new ArrayList<>(prescriptions);
+        rows.sort((left, right) -> Long.compare(right.prescriptionId, left.prescriptionId));
         int medicines = 0;
         int activeCount = 0;
         for (HomeContracts.Prescription prescription : rows) {
@@ -2097,7 +2288,7 @@ public final class MedScreens {
                 continue;
             }
             roundCount++;
-            rounds.addView(alarmRound(activity, minutes, selected, round, root));
+            rounds.addView(alarmRound(activity, minutes, selected, round, root, false));
         }
         boolean any = roundCount > 0;
         empty.setVisibility(any ? View.GONE : View.VISIBLE);
@@ -2122,14 +2313,6 @@ public final class MedScreens {
     }
 
     private static boolean canConfirm(MedicineDraft medicine) {
-        if (medicine != null && medicine.isPrn()) {
-            String name = medicine.getName();
-            return name != null
-                    && !name.trim().isEmpty()
-                    && medicine.getStart() != null
-                    && medicine.getEnd() != null
-                    && !medicine.getEnd().isBefore(medicine.getStart());
-        }
         return MedicationRules.hasRequiredFields(medicine);
     }
 

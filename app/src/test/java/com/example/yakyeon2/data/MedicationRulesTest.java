@@ -194,7 +194,8 @@ public class MedicationRulesTest {
         medicine.setAmount(DoseAmount.CAPSULE_1);
         medicine.rounds().add(DoseRound.MORNING);
         medicine.rounds().add(DoseRound.BEDTIME);
-        medicine.setTiming(DoseTiming.BEDTIME);
+        medicine.timings().add(DoseTiming.AFTER_MEAL_30);
+        medicine.timings().add(DoseTiming.BEDTIME);
         medicine.setEnd(DAY);
         medicine.setConfirmed(true);
         draft.alarmMinutes().put(DoseRound.MORNING, 8 * 60);
@@ -632,6 +633,56 @@ public class MedicationRulesTest {
         assertEquals("4", DoseAmount.canonicalQuantity("4"));
         assertEquals("2.5", DoseAmount.canonicalQuantity("2.50"));
         assertEquals(null, DoseAmount.canonicalQuantity(""));
+    }
+
+    @Test
+    public void confirmNeedsEveryFieldAndMealTimingFollowsMealRounds() {
+        MedicineDraft medicine = new MedicineDraft();
+        medicine.setName("name-for-test");
+        medicine.setAmount(DoseAmount.TABLET_1);
+        medicine.setStart(DAY);
+        medicine.setEnd(DAY);
+        medicine.rounds().add(DoseRound.MORNING);
+        assertFalse(MedicationRules.hasRequiredFields(medicine));
+
+        medicine.setTiming(DoseTiming.BEFORE_MEAL);
+        assertTrue(MedicationRules.hasRequiredFields(medicine));
+
+        medicine.timings().add(DoseTiming.AFTER_MEAL_30);
+        assertFalse(MedicationRules.mealTimingMatches(medicine));
+        assertFalse(MedicationRules.hasRequiredFields(medicine));
+
+        medicine.setTiming(DoseTiming.AFTER_MEAL_30);
+        medicine.rounds().clear();
+        medicine.rounds().add(DoseRound.BEDTIME);
+        assertFalse(MedicationRules.hasRequiredFields(medicine));
+
+        medicine.timings().clear();
+        assertTrue(MedicationRules.hasRequiredFields(medicine));
+
+        medicine.setPrn(true);
+        medicine.rounds().clear();
+        medicine.setTiming(DoseTiming.BEFORE_MEAL);
+        assertFalse(MedicationRules.hasRequiredFields(medicine));
+        medicine.timings().clear();
+        assertTrue(MedicationRules.hasRequiredFields(medicine));
+
+        medicine.setAmount(null);
+        assertFalse(MedicationRules.hasRequiredFields(medicine));
+    }
+
+    @Test
+    public void registrationPinsMealClocksAndLeavesBedtime() {
+        Map<DoseRound, Integer> minutes = new EnumMap<>(DoseRound.class);
+        minutes.put(DoseRound.MORNING, 9 * 60);
+        minutes.put(DoseRound.LUNCH, 14 * 60);
+        minutes.put(DoseRound.EVENING, 19 * 60);
+        minutes.put(DoseRound.BEDTIME, 23 * 60);
+        MedicationRules.pinSelectedMealTimes(EnumSet.of(DoseRound.MORNING, DoseRound.EVENING, DoseRound.BEDTIME), minutes);
+        assertEquals(Integer.valueOf(MedicationRules.MORNING_MINUTE), minutes.get(DoseRound.MORNING));
+        assertEquals(Integer.valueOf(14 * 60), minutes.get(DoseRound.LUNCH));
+        assertEquals(Integer.valueOf(MedicationRules.EVENING_MINUTE), minutes.get(DoseRound.EVENING));
+        assertEquals(Integer.valueOf(23 * 60), minutes.get(DoseRound.BEDTIME));
     }
 
     private static DoseRecord sample(long scheduled) {

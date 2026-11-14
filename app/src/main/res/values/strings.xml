@@ -243,7 +243,7 @@
     <string name="home_interaction_dev">개발용 테스트 관계 %1$d건 (등재 결과 아님)</string>
     <string name="home_dev_blocked">개발용 예시를 불러오지 못했습니다. 직접 작성 중인 등록이나 이미 찬 약통 칸은 바꾸지 않습니다.</string>
     <string name="graph_title">약물 관계</string>
-    <string name="graph_body">함께 복용 중인 약의 병용금기 등재 여부만 표시합니다. 점수나 위험도 순위는 만들지 않습니다.</string>
+    <string name="graph_body">함께 복용 중인 약의 병용금기 등재 여부만 표시합니다.</string>
     <string name="graph_empty">현재 복용 중인 약이 없습니다.</string>
     <string name="graph_sample_excluded">개발용 예시 약은 그래프에 넣지 않습니다.</string>
     <string name="graph_no_source">등재 정보를 조회할 서버가 연결되지 않았습니다.</string>
@@ -256,7 +256,7 @@
     <string name="graph_dev_banner">개발용 테스트 관계입니다. 등재 조회 결과가 아닙니다.</string>
     <string name="graph_node_selected">선택한 약물입니다.</string>
     <string name="graph_loading">병용금기 정보를 불러오는 중입니다.</string>
-    <string name="graph_summary">오늘 복용 %1$d · 등재 %2$d · 확인하지 못한 약 %3$d</string>
+    <string name="graph_summary">오늘 복용 %1$d · 등재 %2$d</string>
     <string name="graph_unchecked_notice">확인하지 못한 약이 있어요</string>
     <string name="graph_unchecked_node">이 약은 병용금기 검사를 마치지 못했습니다.</string>
     <string name="graph_unchecked_list">확인하지 못한 약: %1$s</string>
@@ -734,10 +734,9 @@
     <string name="med_alarm_registered">약봉지 1개 등록 완료</string>
     <string name="med_alarm_edit_subtitle">저장된 복용시간을 수정합니다. 약 이름, 용량, 복용 시점, 회차, 기간은 바꾸지 않습니다.</string>
     <string name="med_alarm_edit_summary">저장된 복용시간</string>
-    <string name="med_alarm_note">이 약봉지에서 고른 시간대만 입력합니다. 시각은 약봉지마다 한 벌입니다. 알림은 발송되지 않습니다.</string>
+    <string name="med_alarm_note">이 약봉지에서 고른 시간대만 입력합니다. 시각은 약봉지마다 한 벌입니다.</string>
     <string name="med_alarm_empty">선택된 복용 시간대가 없습니다.</string>
     <string name="med_alarm_pick">%1$s 시각 선택</string>
-    <string name="med_alarm_once">1회</string>
     <string name="med_alarm_save">최종 등록</string>
     <string name="med_schedule_title">복약 일정</string>
     <string name="med_schedule_empty">이 날짜의 복약 일정이 없습니다.</string>

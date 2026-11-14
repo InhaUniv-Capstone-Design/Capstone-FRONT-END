@@ -38,6 +38,15 @@ public class OcrFillTest {
         Assert.assertFalse(medicine.timings().contains(DoseTiming.ALWAYS));
         Assert.assertFalse(medicine.timings().contains(DoseTiming.BEDTIME));
         Assert.assertTrue(medicine.rounds().contains(DoseRound.EVENING));
+
+        medicine.timings().add(DoseTiming.BEFORE_MEAL);
+        medicine.setMealRelation("BEFORE_MEAL", 0);
+        medicine.rounds().clear();
+        medicine.rounds().add(DoseRound.BEDTIME);
+        MedScreens.ensureAutoTimings(medicine);
+        Assert.assertFalse(medicine.timings().contains(DoseTiming.BEFORE_MEAL));
+        Assert.assertNull(medicine.getMealRelation());
+        Assert.assertTrue(medicine.timings().contains(DoseTiming.BEDTIME));
     }
 
     @Test

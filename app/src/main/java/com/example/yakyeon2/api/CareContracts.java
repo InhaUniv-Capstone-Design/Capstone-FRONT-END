@@ -724,6 +724,23 @@ public final class CareContracts {
         return new Pillbox(pillbox.device, rows);
     }
 
+    /**
+     * {@code zeroBasedIndex} 0 is compartment 1. A missing pillbox is not treated as full.
+     */
+    public static boolean compartmentInUse(Pillbox pillbox, int zeroBasedIndex) {
+        Compartment compartment = compartmentByNo(pillbox, zeroBasedIndex + 1L);
+        return compartment != null && !EMPTY.equals(compartment.state);
+    }
+
+    public static String compartmentHospital(Pillbox pillbox, int zeroBasedIndex) {
+        Compartment compartment = compartmentByNo(pillbox, zeroBasedIndex + 1L);
+        if (compartment == null || compartment.hospitalName == null) {
+            return null;
+        }
+        String name = compartment.hospitalName.trim();
+        return name.isEmpty() ? null : name;
+    }
+
     public static boolean hasEmptyCompartment(Pillbox pillbox) {
         if (pillbox == null) {
             return false;
