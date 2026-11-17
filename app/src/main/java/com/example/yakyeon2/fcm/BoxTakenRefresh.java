@@ -18,7 +18,11 @@ public final class BoxTakenRefresh {
     }
 
     public static boolean requestsReload(PushMessages.Kind kind, boolean signedIn) {
-        return signedIn && kind == PushMessages.Kind.BOX_TAKEN;
+        return requestsReload(kind, signedIn, false);
+    }
+
+    public static boolean requestsReload(PushMessages.Kind kind, boolean signedIn, boolean intakeCopy) {
+        return signedIn && (kind == PushMessages.Kind.BOX_TAKEN || intakeCopy);
     }
 
     /**

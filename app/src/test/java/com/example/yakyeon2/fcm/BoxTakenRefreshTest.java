@@ -20,6 +20,10 @@ public class BoxTakenRefreshTest {
         assertFalse(BoxTakenRefresh.requestsReload(PushMessages.Kind.BOX_TAKEN, false));
         assertFalse(BoxTakenRefresh.requestsReload(PushMessages.Kind.MISSED_DOSE, true));
         assertFalse(BoxTakenRefresh.requestsReload(PushMessages.Kind.PASSTHROUGH, true));
+        assertTrue(BoxTakenRefresh.requestsReload(PushMessages.Kind.PASSTHROUGH, true, true));
+        assertFalse(BoxTakenRefresh.requestsReload(PushMessages.Kind.PASSTHROUGH, false, true));
+        assertFalse(BoxTakenRefresh.requestsReload(PushMessages.Kind.MISSED_DOSE, true, false));
+        assertFalse(BoxTakenRefresh.requestsReload(PushMessages.Kind.DOSE_REMINDER, true, false));
     }
 
     @Test

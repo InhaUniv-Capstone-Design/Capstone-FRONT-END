@@ -49,7 +49,7 @@ public final class PushMessages {
     }
 
     public static Incoming classify(Map<String, String> data) {
-        String type = upper(first(data, "type", "notification_type", "event", "kind"));
+        String type = upper(first(data, "type", "notification_type", "notif_type", "event", "kind"));
         if (type.isEmpty()) {
             type = upper(first(data, "setting_key"));
         }
@@ -89,6 +89,21 @@ public final class PushMessages {
         return recent == null ? new ArrayList<>() : new ArrayList<>(recent);
     }
 
+    /** Title of the intake-detected notice. FCM delivers it as notification text. */
+    public static final String INTAKE_CONFIRMED_TEXT = "복용이 확인됐어요";
+
+    public static boolean confirmsIntake(String... texts) {
+        if (texts == null) {
+            return false;
+        }
+        for (String text : texts) {
+            if (text != null && INTAKE_CONFIRMED_TEXT.equals(text.trim())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private static Kind kindOf(String type) {
         if (type.isEmpty() || "DEVICE".equals(type) || "GUARDIAN_OPEN".equals(type) || "IR_TRIGGER".equals(type)) {
             return Kind.PASSTHROUGH;
@@ -104,7 +119,8 @@ public final class PushMessages {
             return Kind.END_SOON;
         }
         if ("BUTTON_PRESS".equals(type) || "BOX_TAKEN".equals(type) || "DEVICE_TAKEN".equals(type)
-                || "PILLBOX_TAKEN".equals(type) || "GUARDIAN_TAKEN".equals(type)) {
+                || "PILLBOX_TAKEN".equals(type) || "GUARDIAN_TAKEN".equals(type)
+                || "INTAKE_DETECTED".equals(type)) {
             return Kind.BOX_TAKEN;
         }
         if ("BOX_MISSED".equals(type) || "DEVICE_MISSED".equals(type) || "PILLBOX_MISSED".equals(type)

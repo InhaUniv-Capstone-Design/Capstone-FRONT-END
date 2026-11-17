@@ -222,7 +222,7 @@ public class HomeContractTest {
                 null
         );
         Assert.assertEquals(HomeContracts.DoseFollowUp.ASK, HomeContracts.followUp(morning, now));
-        Assert.assertEquals(HomeContracts.STATUS_MISSED, HomeContracts.scheduleStatus(morning, now));
+        Assert.assertEquals(HomeContracts.STATUS_PENDING, HomeContracts.scheduleStatus(morning));
         Assert.assertEquals(HomeContracts.DoseFollowUp.NONE, HomeContracts.followUp(lunch, now));
         Assert.assertEquals(HomeContracts.DoseFollowUp.NONE, HomeContracts.followUp(dinner, now));
         Assert.assertEquals(morning.scheduledDoseId, HomeContracts.catchUpDose(
@@ -232,6 +232,28 @@ public class HomeContractTest {
 
         java.time.Instant afterClose = java.time.OffsetDateTime.parse("2026-10-27T11:01:00+09:00").toInstant();
         Assert.assertEquals(HomeContracts.DoseFollowUp.NONE, HomeContracts.followUp(morning, afterClose));
+        Assert.assertEquals(HomeContracts.STATUS_PENDING, HomeContracts.scheduleStatus(morning));
+
+        HomeContracts.Dose missed = dose(
+                5L,
+                "MORNING",
+                "2026-10-27T08:00:00+09:00",
+                "2026-10-27T11:00:00+09:00",
+                "MISSED",
+                null
+        );
+        Assert.assertEquals(HomeContracts.DoseFollowUp.ASK, HomeContracts.followUp(missed, now));
+        Assert.assertEquals(HomeContracts.STATUS_MISSED, HomeContracts.scheduleStatus(missed));
+
+        HomeContracts.Dose normal = dose(
+                6L,
+                "MORNING",
+                "2026-10-27T08:00:00+09:00",
+                "2026-10-27T11:00:00+09:00",
+                "NORMAL",
+                "2026-10-27T08:10:00+09:00"
+        );
+        Assert.assertEquals(HomeContracts.STATUS_NORMAL, HomeContracts.scheduleStatus(normal));
 
         HomeContracts.Dose delayed = dose(
                 4L,
@@ -242,7 +264,7 @@ public class HomeContractTest {
                 "2026-10-27T09:40:00+09:00"
         );
         Assert.assertEquals(HomeContracts.DoseFollowUp.RECORDED, HomeContracts.followUp(delayed, now));
-        Assert.assertEquals(HomeContracts.STATUS_DELAYED, HomeContracts.scheduleStatus(delayed, now));
+        Assert.assertEquals(HomeContracts.STATUS_DELAYED, HomeContracts.scheduleStatus(delayed));
     }
 
     private static HomeContracts.Dose dose(

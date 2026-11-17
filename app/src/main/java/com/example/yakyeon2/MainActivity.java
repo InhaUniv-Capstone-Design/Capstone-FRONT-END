@@ -216,6 +216,35 @@ public class MainActivity extends AppCompatActivity
     private Integer serverSlotChoice;
     private CareContracts.Pillbox serverSlotPillbox;
     private boolean serverSlotBusy;
+    private static final long HOME_POLL_INTERVAL_MS = 10_000L;
+    private static final long BOX_TAKEN_RETRY_MS = 1_500L;
+    private final Handler homePollHandler = new Handler(Looper.getMainLooper());
+    private final Runnable boxTakenRetry = new Runnable() {
+        @Override
+        public void run() {
+            if (!isAlive() || !isSignedIn() || homeWriteBusy) {
+                Log.i("BoxTaken", "retry skip");
+                return;
+            }
+            Log.i("BoxTaken", "retry reload");
+            reloadServerSurfaces();
+        }
+    };
+    private final Runnable homePollTick = new Runnable() {
+        @Override
+        public void run() {
+            if (!homePollScheduled || !homePollWanted()) {
+                homePollScheduled = false;
+                return;
+            }
+            Log.i("HomePoll", "tick");
+            requestHomeRefresh();
+            homePollHandler.postDelayed(this, HOME_POLL_INTERVAL_MS);
+        }
+    };
+    private boolean homePollScheduled;
+    private boolean activityResumed;
+    private boolean homeLoadInFlight;
     private boolean homeArmed;
     private int homeEpoch;
     private MainScreens.CareView homeView = MainScreens.CareView.LOADING;
@@ -230,6 +259,7 @@ public class MainActivity extends AppCompatActivity
     private boolean homeWrites;
     private boolean homeWriteBusy;
     private boolean scheduleLoaded;
+    private boolean scheduleOnScreen;
     private int scheduleEpoch;
     private MainScreens.CareView scheduleView = MainScreens.CareView.LOADING;
     private String scheduleMessage;
@@ -1044,6 +1074,8 @@ public class MainActivity extends AppCompatActivity
         verificationHandler.removeCallbacks(verificationTick);
         verificationHandler.removeCallbacks(homeDateRollover);
         cancelDelayedPhoneConfirm();
+        stopHomePolling();
+        homePollHandler.removeCallbacks(boxTakenRetry);
         super.onDestroy();
     }
 
@@ -1833,10 +1865,22 @@ public class MainActivity extends AppCompatActivity
         } else {
             disarmCareTabs();
         }
-        if (needsServerHome(screen)) {
+        if (showingHome()) {
             ensureHomeLoaded();
+            syncHomePolling();
+        } else if (needsServerHome(screen)) {
+            stopHomePolling();
+            ensureHomeLoaded();
+        } else {
+            stopHomePolling();
         }
-        if (isSignedIn() && showingSchedule()) {
+        boolean scheduleVisible = isSignedIn() && showingSchedule();
+        if (scheduleVisible && !scheduleOnScreen) {
+            scheduleLoaded = false;
+            Log.i("BoxTaken", "schedule shown reload");
+        }
+        scheduleOnScreen = scheduleVisible;
+        if (scheduleVisible) {
             ensureScheduleLoaded();
         }
         if (isSignedIn() && MedScreen.HISTORY.equals(screen)) {
@@ -2514,6 +2558,8 @@ public class MainActivity extends AppCompatActivity
 
     @Override
     protected void onPause() {
+        activityResumed = false;
+        stopHomePolling();
         returnedFromBackground = true;
         super.onPause();
     }
@@ -2521,16 +2567,21 @@ public class MainActivity extends AppCompatActivity
     @Override
     protected void onResume() {
         super.onResume();
+        activityResumed = true;
         boolean pendingBoxTaken = BoxTakenRefresh.consumePending();
         Log.i("BoxTaken", "onResume pendingConsumed=" + pendingBoxTaken
                 + " fromBackground=" + returnedFromBackground
                 + " signedIn=" + isSignedIn());
         armHomeDateWatch();
         boolean dateChanged = noteHomeDate();
+        if (pendingBoxTaken && isSignedIn() && isAlive()) {
+            onBoxTakenRefresh();
+        }
         if (!returnedFromBackground || !isSignedIn() || !isAlive()) {
             if (dateChanged && isAlive()) {
                 rollHomeToToday();
             }
+            syncHomePolling();
             return;
         }
         returnedFromBackground = false;
@@ -2567,6 +2618,7 @@ public class MainActivity extends AppCompatActivity
             accountSyncKey = null;
             maybeSyncAccountScreens(screen);
         }
+        syncHomePolling();
     }
 
     private void maybeSyncAccountScreens(String screen) {
@@ -5565,6 +5617,8 @@ public class MainActivity extends AppCompatActivity
     public void selectServerScheduleDate(java.time.LocalDate date) {
         scheduleDate = date;
         scheduleLoaded = false;
+        scheduleView = MainScreens.CareView.LOADING;
+        scheduleDoses = null;
         ensureScheduleLoaded();
         refresh();
     }
@@ -5774,6 +5828,8 @@ public class MainActivity extends AppCompatActivity
         }
         Log.i("BoxTaken", "onBoxTakenRefresh");
         reloadServerSurfaces();
+        homePollHandler.removeCallbacks(boxTakenRetry);
+        homePollHandler.postDelayed(boxTakenRetry, BOX_TAKEN_RETRY_MS);
     }
 
     private void invalidateDoseCaches() {
@@ -5824,6 +5880,63 @@ public class MainActivity extends AppCompatActivity
                 || MedScreen.HISTORY.equals(screen);
     }
 
+    private boolean showingHome() {
+        return navigator.isMainArea() && navigator.currentTab() == ScreenId.HOME;
+    }
+
+    private boolean homePollWanted() {
+        return activityResumed && isAlive() && isSignedIn() && showingHome();
+    }
+
+    private void syncHomePolling() {
+        if (!homePollWanted()) {
+            stopHomePolling();
+            return;
+        }
+        if (homePollScheduled) {
+            return;
+        }
+        homePollScheduled = true;
+        Log.i("HomePoll", "start");
+        requestHomeRefresh();
+        homePollHandler.removeCallbacks(homePollTick);
+        homePollHandler.postDelayed(homePollTick, HOME_POLL_INTERVAL_MS);
+    }
+
+    private void stopHomePolling() {
+        homePollHandler.removeCallbacks(homePollTick);
+        if (!homePollScheduled) {
+            return;
+        }
+        homePollScheduled = false;
+        Log.i("HomePoll", "stop");
+    }
+
+    /**
+     * Reloads the home summary and today's doses when the home screen is visible.
+     * A full home load is used until those two responses can be stored on their own.
+     * An in-flight load is left to finish so the same GET is not sent twice.
+     */
+    private void requestHomeRefresh() {
+        if (!isSignedIn() || homeLoadInFlight) {
+            Log.i("HomePoll", "refresh skip inFlight=" + homeLoadInFlight + " signedIn=" + isSignedIn());
+            return;
+        }
+        homeEpoch++;
+        homeLoadInFlight = true;
+        if (homeView == MainScreens.CareView.READY && homePatientId != null) {
+            Log.i("HomePoll", "refresh summary+doses patient=" + homePatientId);
+            loadHomeDoseStatus(homeEpoch, homePatientId);
+            return;
+        }
+        homeArmed = true;
+        if (homeView != MainScreens.CareView.READY) {
+            homeView = MainScreens.CareView.LOADING;
+        }
+        Log.i("HomePoll", "refresh full");
+        loadHome(homeEpoch);
+    }
+
     private void ensureHomeLoaded() {
         if (!isSignedIn() || homeArmed) {
             Log.i("BoxTaken", "ensureHomeLoaded skip signedIn=" + isSignedIn() + " homeArmed=" + homeArmed);
@@ -5831,7 +5944,10 @@ public class MainActivity extends AppCompatActivity
         }
         homeArmed = true;
         homeEpoch++;
-        homeView = MainScreens.CareView.LOADING;
+        homeLoadInFlight = true;
+        if (homeView != MainScreens.CareView.READY) {
+            homeView = MainScreens.CareView.LOADING;
+        }
         loadHome(homeEpoch);
     }
 
@@ -5846,7 +5962,9 @@ public class MainActivity extends AppCompatActivity
         }
         scheduleLoaded = true;
         scheduleEpoch++;
-        scheduleView = MainScreens.CareView.LOADING;
+        if (scheduleView != MainScreens.CareView.READY || scheduleDoses == null) {
+            scheduleView = MainScreens.CareView.LOADING;
+        }
         loadSchedule(scheduleEpoch, scheduleDate);
     }
 
@@ -6042,6 +6160,11 @@ public class MainActivity extends AppCompatActivity
             Log.i("BoxTaken", "applyHome skip stale epoch");
             return;
         }
+        homeLoadInFlight = false;
+        if (view == MainScreens.CareView.FAILED && homeView == MainScreens.CareView.READY) {
+            Log.i("HomePoll", "keep existing home after failure");
+            return;
+        }
         homeView = view;
         homeMessage = message;
         homeSummary = summary;
@@ -6211,7 +6334,6 @@ public class MainActivity extends AppCompatActivity
             return;
         }
         Log.i("BoxTaken", source + " count=" + doses.size() + " query=" + queryStart + ".." + queryEnd);
-        java.time.Instant now = java.time.Instant.now();
         for (HomeContracts.Dose dose : doses) {
             if (dose == null) {
                 continue;
@@ -6219,7 +6341,7 @@ public class MainActivity extends AppCompatActivity
             java.time.LocalDate day = HomeContracts.seoulDate(dose.scheduledAt);
             boolean match = day != null && queryStart != null && queryEnd != null
                     && !day.isBefore(queryStart) && !day.isAfter(queryEnd);
-            String shown = HomeContracts.scheduleStatus(dose, now);
+            String shown = HomeContracts.scheduleStatus(dose);
             Log.i("BoxTaken", source
                     + " id=" + dose.scheduledDoseId
                     + " at=" + dose.scheduledAt
@@ -6255,7 +6377,130 @@ public class MainActivity extends AppCompatActivity
         return new PatientGate(patient, null);
     }
 
+    private void loadHomeDoseStatus(int epoch, long patientId) {
+        ApiClient.execute(() -> {
+            java.time.LocalDate today = java.time.LocalDate.now(java.time.ZoneId.of("Asia/Seoul"));
+            try {
+                HomeContracts.Section<HomeContracts.HomeSummary> summary;
+                HomeContracts.Section<java.util.List<HomeContracts.Dose>> todayDoses;
+                if (AccountRoles.PATIENT.equals(AuthTokenStore.accountType(getApplicationContext()))) {
+                    Log.i("HomePoll", "GET /patients/" + patientId + "/home-summary");
+                    summary = readSummary(patientId);
+                    Log.i("HomePoll", "GET " + HomeContracts.dosesPath(patientId, today));
+                    todayDoses = readToday(patientId, today);
+                } else {
+                    PatientGate gate = gatePatients();
+                    if (gate.blocked != null || gate.patient == null) {
+                        String blocked = gate.blocked;
+                        runOnUiThread(() -> {
+                            if (!isAlive() || epoch != homeEpoch) {
+                                return;
+                            }
+                            if (blocked == null) {
+                                homeLoadInFlight = false;
+                                return;
+                            }
+                            applyHome(
+                                    epoch,
+                                    MainScreens.CareView.BLOCKED,
+                                    blocked,
+                                    null,
+                                    null,
+                                    null,
+                                    null,
+                                    null,
+                                    false,
+                                    null,
+                                    null
+                            );
+                        });
+                        return;
+                    }
+                    Log.i("HomePoll", "GET /patients/" + gate.patient.patientId + "/home-summary");
+                    summary = readSummary(gate.patient);
+                    Log.i("HomePoll", "GET " + HomeContracts.dosesPath(gate.patient.patientId, today));
+                    todayDoses = readToday(gate.patient, today);
+                }
+                HomeContracts.Section<HomeContracts.HomeSummary> loadedSummary = summary;
+                HomeContracts.Section<java.util.List<HomeContracts.Dose>> loadedDoses = todayDoses;
+                runOnUiThread(() -> applyHomeDoseStatus(epoch, loadedSummary, loadedDoses));
+            } catch (ApiException exception) {
+                Log.i("HomePoll", "refresh failed http=" + exception.status() + " code=" + exception.code());
+                runOnUiThread(() -> {
+                    if (!isAlive() || epoch != homeEpoch) {
+                        return;
+                    }
+                    homeLoadInFlight = false;
+                    if (exception.endsSession()) {
+                        showApiFailure(getString(R.string.tab_home), exception);
+                    }
+                });
+            }
+        });
+    }
+
+    private HomeContracts.Section<HomeContracts.HomeSummary> readSummary(long patientId) throws ApiException {
+        try {
+            return HomeContracts.Section.ready(HomeApi.homeSummary(getApplicationContext(), patientId));
+        } catch (ApiException exception) {
+            if (exception.endsSession()) {
+                throw exception;
+            }
+            return failedSection(exception);
+        }
+    }
+
+    private HomeContracts.Section<java.util.List<HomeContracts.Dose>> readToday(
+            long patientId,
+            java.time.LocalDate today
+    ) throws ApiException {
+        try {
+            java.util.List<HomeContracts.Dose> doses = HomeApi.doses(
+                    getApplicationContext(),
+                    patientId,
+                    today
+            );
+            logDoseRows("home", today, today, doses);
+            return HomeContracts.Section.ready(doses);
+        } catch (ApiException exception) {
+            Log.i("HomePoll", "home doses failed http=" + exception.status() + " code=" + exception.code());
+            if (exception.endsSession()) {
+                throw exception;
+            }
+            return failedSection(exception);
+        }
+    }
+
+    private void applyHomeDoseStatus(
+            int epoch,
+            HomeContracts.Section<HomeContracts.HomeSummary> summary,
+            HomeContracts.Section<java.util.List<HomeContracts.Dose>> today
+    ) {
+        if (!isAlive() || epoch != homeEpoch) {
+            Log.i("HomePoll", "apply skip stale epoch");
+            return;
+        }
+        homeLoadInFlight = false;
+        boolean changed = false;
+        if (summary != null && summary.kind != HomeContracts.Section.Kind.FAILED) {
+            homeSummary = summary;
+            changed = true;
+        }
+        if (today != null && today.kind != HomeContracts.Section.Kind.FAILED) {
+            homeToday = today;
+            changed = true;
+        }
+        Log.i("HomePoll", "apply changed=" + changed
+                + " summary=" + (summary == null ? "null" : summary.kind)
+                + " doses=" + (today == null ? "null" : today.kind));
+        if (changed && showingHome()) {
+            refresh();
+        }
+    }
+
     private void clearHomeCache() {
+        stopHomePolling();
+        homeLoadInFlight = false;
         homeArmed = false;
         homeEpoch++;
         homeView = MainScreens.CareView.LOADING;

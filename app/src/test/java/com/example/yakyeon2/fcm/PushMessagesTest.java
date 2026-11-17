@@ -70,6 +70,26 @@ public class PushMessagesTest {
     }
 
     @Test
+    public void intakeDetectedReloadsAndOtherNoticesDoNot() {
+        Map<String, String> intake = new HashMap<>();
+        intake.put("notif_type", "INTAKE_DETECTED");
+        intake.put("notification_id", "8");
+        assertEquals(PushMessages.Kind.BOX_TAKEN, PushMessages.classify(intake).kind);
+
+        Map<String, String> opened = new HashMap<>();
+        opened.put("notif_type", "DEVICE_OPENED");
+        assertEquals(PushMessages.Kind.PASSTHROUGH, PushMessages.classify(opened).kind);
+        assertEquals(PushMessages.Kind.DOSE_REMINDER, classify("DOSE_REMINDER").kind);
+
+        assertTrue(PushMessages.confirmsIntake("복용이 확인됐어요"));
+        assertTrue(PushMessages.confirmsIntake(null, " 복용이 확인됐어요 "));
+        assertFalse(PushMessages.confirmsIntake("약 드셨나요?"));
+        assertFalse(PushMessages.confirmsIntake("약 먹을 시간이에요"));
+        assertFalse(PushMessages.confirmsIntake("약통이 열렸습니다."));
+        assertFalse(PushMessages.confirmsIntake((String[]) null));
+    }
+
+    @Test
     public void theSameNotificationIsAcceptedOnce() {
         Map<String, String> data = new HashMap<>();
         data.put("type", "DOSE_REMINDER");

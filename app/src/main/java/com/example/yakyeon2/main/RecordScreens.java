@@ -821,7 +821,7 @@ public final class RecordScreens {
                 || HomeContracts.SLOT_BEDTIME.equals(dose.timingSlot);
         icon.setImageResource(night ? R.drawable.ic_yakyeon_moon : R.drawable.ic_yakyeon_sun);
         Instant now = Instant.now();
-        String shown = HomeContracts.scheduleStatus(dose, now);
+        String shown = HomeContracts.scheduleStatus(dose);
         TextView badge = row.findViewById(R.id.text_schedule_status);
         badge.setText(serverStatusLabel(activity, shown));
         int iconBg = activity.getColor(R.color.yakyeon_mint);

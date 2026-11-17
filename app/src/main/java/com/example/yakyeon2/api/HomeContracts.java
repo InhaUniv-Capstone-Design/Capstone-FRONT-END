@@ -578,12 +578,14 @@ public final class HomeContracts {
         return DoseFollowUp.ASK;
     }
 
-    public static String scheduleStatus(Dose dose, Instant now) {
-        if (dose == null) {
+    /**
+     * Calendar text follows the server status. Passing the scheduled time does not
+     * turn {@code PENDING} into {@code MISSED}; {@link #followUp} still decides
+     * whether the home screen may ask.
+     */
+    public static String scheduleStatus(Dose dose) {
+        if (dose == null || dose.status == null || dose.status.isEmpty()) {
             return STATUS_PENDING;
-        }
-        if (followUp(dose, now) == DoseFollowUp.ASK) {
-            return STATUS_MISSED;
         }
         return dose.status;
     }

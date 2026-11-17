@@ -48,17 +48,26 @@ public class YakyeonMessagingService extends FirebaseMessagingService {
         }
         String dataTitle = data.get("title");
         String dataBody = data.get("body");
+        String notificationTitle = notification == null ? null : notification.getTitle();
+        String notificationBody = notification == null ? null : notification.getBody();
         boolean serverCopy = hasText(dataTitle) || hasText(dataBody);
-        String title = serverCopy ? dataTitle : (notification == null ? null : notification.getTitle());
-        String body = serverCopy ? dataBody : (notification == null ? null : notification.getBody());
+        String title = serverCopy ? dataTitle : notificationTitle;
+        String body = serverCopy ? dataBody : notificationBody;
         PushMessages.Incoming incoming = PushMessages.classify(data);
         boolean signedIn = AuthTokenStore.hasSession(this);
+        boolean intakeCopy = PushMessages.confirmsIntake(
+                dataTitle,
+                dataBody,
+                notificationTitle,
+                notificationBody
+        );
         Log.i("BoxTaken", "classify kind=" + incoming.kind
                 + " type=" + safeType(data)
                 + " status=" + safeField(data, "status")
                 + " taken_at=" + safeField(data, "taken_at")
                 + " dedupe=" + incoming.dedupeKey
                 + " suppress=" + incoming.suppressBecauseTaken
+                + " intakeCopy=" + intakeCopy
                 + " hasSession=" + signedIn);
         if (incoming.suppressBecauseTaken) {
             Log.d(FcmRegistrar.TAG, "이미 복용한 일정은 미복용 알림을 표시하지 않음");
@@ -72,7 +81,7 @@ public class YakyeonMessagingService extends FirebaseMessagingService {
             return;
         }
         remember(this, recent);
-        if (BoxTakenRefresh.requestsReload(incoming.kind, signedIn)) {
+        if (BoxTakenRefresh.requestsReload(incoming.kind, signedIn, intakeCopy)) {
             Log.i("BoxTaken", "post BoxTakenRefresh.deliver");
             new Handler(Looper.getMainLooper()).post(BoxTakenRefresh::deliver);
         } else {
@@ -117,6 +126,10 @@ public class YakyeonMessagingService extends FirebaseMessagingService {
         type = safeField(data, "notification_type");
         if (!type.isEmpty()) {
             return "notification_type:" + type;
+        }
+        type = safeField(data, "notif_type");
+        if (!type.isEmpty()) {
+            return "notif_type:" + type;
         }
         type = safeField(data, "event");
         if (!type.isEmpty()) {
