@@ -2,6 +2,9 @@ package com.example.yakyeon2.auth;
 
 import com.example.yakyeon2.api.AuthContracts;
 
+import java.time.LocalDate;
+import java.time.ZoneId;
+
 public final class AuthValidation {
 
     public static final int LOGIN_ID_MAX = 100;
@@ -136,6 +139,15 @@ public final class AuthValidation {
             return SignupCheck.INVALID_BIRTHDATE;
         }
         return SignupCheck.NOT_CONNECTED;
+    }
+
+    public static boolean isUnder14(String birthdate) {
+        String iso = AuthContracts.isoDate(birthdate);
+        if (iso == null) {
+            return false;
+        }
+        LocalDate birth = LocalDate.parse(iso);
+        return birth.plusYears(14).isAfter(LocalDate.now(ZoneId.of("Asia/Seoul")));
     }
 
     public static FindIdCheck findId(String name, String phone) {

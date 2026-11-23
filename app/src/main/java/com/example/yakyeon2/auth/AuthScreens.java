@@ -472,7 +472,7 @@ public final class AuthScreens {
         code.getEditText().setInputType(InputType.TYPE_CLASS_NUMBER);
         birth.getEditText().setFocusable(false);
         birth.getEditText().setClickable(true);
-        View.OnClickListener openDate = v -> showBirthdatePicker(activity, birth);
+        View.OnClickListener openDate = v -> showBirthdatePicker(activity, host, birth);
         birth.getEditText().setOnClickListener(openDate);
         birth.setOnClickListener(openDate);
         root.findViewById(R.id.button_request_code).setOnClickListener(v ->
@@ -786,11 +786,16 @@ public final class AuthScreens {
         field.setBoxCornerRadii(radius, radius, radius, radius);
     }
 
-    private static void showBirthdatePicker(AppCompatActivity activity, YakyeonTextField birth) {
+    private static void showBirthdatePicker(AppCompatActivity activity, Host host, YakyeonTextField birth) {
         Calendar calendar = Calendar.getInstance();
-        new DatePickerDialog(activity, (view, year, month, day) -> birth.setText(
-                String.format(Locale.KOREA, "%04d.%02d.%02d", year, month + 1, day)
-        ), calendar.get(Calendar.YEAR), calendar.get(Calendar.MONTH), calendar.get(Calendar.DAY_OF_MONTH)).show();
+        new DatePickerDialog(activity, (view, year, month, day) -> {
+            String picked = String.format(Locale.KOREA, "%04d.%02d.%02d", year, month + 1, day);
+            if (AuthValidation.isUnder14(picked)) {
+                host.showNotice(activity.getString(R.string.auth_birth_under14), "", null);
+                return;
+            }
+            birth.setText(picked);
+        }, calendar.get(Calendar.YEAR), calendar.get(Calendar.MONTH), calendar.get(Calendar.DAY_OF_MONTH)).show();
     }
 
     @NonNull

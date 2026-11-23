@@ -91,7 +91,7 @@ public final class ApiMessages {
             return "연동 중인 상태가 아닙니다.";
         }
         if (ApiCodes.CONSENT_REQUIRED.equals(code)) {
-            return "필요한 동의가 없습니다.";
+            return "서비스 이용을 하려면 약관에 동의해야합니다.";
         }
         if (ApiCodes.INTERACTION_NOT_FOUND.equals(code)) {
             return "존재하지 않는 병용금기 정보입니다.";

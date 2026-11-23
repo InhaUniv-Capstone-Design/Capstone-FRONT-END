@@ -96,10 +96,17 @@ public final class ShareSummary {
                     continue;
                 }
                 for (SavedMedicine medicine : envelope.medicines()) {
-                    boolean active = takingNow(envelope, medicine, end);
-                    if (!active && !overlaps(medicine, start, end)) {
+                    PeriodPlace place = placeInPeriod(
+                            medicine.getStart(),
+                            medicine.getEnd(),
+                            start,
+                            end,
+                            envelope.isStopped()
+                    );
+                    if (place == PeriodPlace.EXCLUDE) {
                         continue;
                     }
+                    boolean active = place == PeriodPlace.TAKING;
                     MedicineLine line = line(envelope, medicine, includeSpan, active);
                     if (active) {
                         if (share.isIncludeCurrent()) {
@@ -248,9 +255,17 @@ public final class ShareSummary {
                 if (medicine == null || medicine.name == null || medicine.name.trim().isEmpty()) {
                     continue;
                 }
-                boolean courseEnded = medicine.statusKnown
-                        ? medicine.ended
-                        : medicine.ended || (medicine.end != null && medicine.end.isBefore(periodEnd));
+                PeriodPlace place = placeInPeriod(
+                        medicine.start,
+                        medicine.end,
+                        periodStart,
+                        periodEnd,
+                        medicine.start == null && medicine.end == null && medicine.ended
+                );
+                if (place == PeriodPlace.EXCLUDE) {
+                    continue;
+                }
+                boolean courseEnded = place == PeriodPlace.FINISHED;
                 String range = medicineRange(medicine.start, medicine.end, includeSpan);
                 MedicineLine line = new MedicineLine(
                         medicine.name.trim(),
@@ -375,18 +390,49 @@ public final class ShareSummary {
         return meds;
     }
 
-    private static boolean takingNow(SavedEnvelope envelope, SavedMedicine medicine, LocalDate today) {
-        if (envelope.isStopped()) {
-            return false;
-        }
-        LocalDate end = medicine.getEnd();
-        return end == null || !end.isBefore(today);
+    /**
+     * Classifies a course against the selected share window.
+     * A dated course is included only when it overlaps that window.
+     * It is still taking when the course reaches the window's last day.
+     * A course with no dates keeps the stored ended flag.
+     */
+    private enum PeriodPlace {
+        EXCLUDE,
+        TAKING,
+        FINISHED
     }
 
-    private static boolean overlaps(SavedMedicine medicine, LocalDate windowStart, LocalDate windowEnd) {
-        LocalDate from = medicine.getStart() != null ? medicine.getStart() : windowStart;
-        LocalDate to = medicine.getEnd() != null ? medicine.getEnd() : windowEnd;
-        return !from.isAfter(windowEnd) && !to.isBefore(windowStart);
+    private static PeriodPlace placeInPeriod(
+            LocalDate start,
+            LocalDate end,
+            LocalDate periodStart,
+            LocalDate periodEnd,
+            boolean stopped
+    ) {
+        if (start == null && end == null) {
+            return stopped ? PeriodPlace.FINISHED : PeriodPlace.TAKING;
+        }
+        if (!rangeOverlaps(start, end, periodStart, periodEnd)) {
+            return PeriodPlace.EXCLUDE;
+        }
+        if (stopped) {
+            return PeriodPlace.FINISHED;
+        }
+        if (end == null || !end.isBefore(periodEnd)) {
+            return PeriodPlace.TAKING;
+        }
+        return PeriodPlace.FINISHED;
+    }
+
+    private static boolean rangeOverlaps(
+            LocalDate start,
+            LocalDate end,
+            LocalDate periodStart,
+            LocalDate periodEnd
+    ) {
+        LocalDate from = start != null ? start : periodStart;
+        LocalDate to = end != null ? end : periodEnd;
+        return !from.isAfter(periodEnd) && !to.isBefore(periodStart);
     }
 
     private static MedicineLine line(

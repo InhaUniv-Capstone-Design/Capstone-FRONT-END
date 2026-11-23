@@ -3,9 +3,14 @@ package com.example.yakyeon2.main;
 import android.app.DatePickerDialog;
 import android.app.Dialog;
 import android.graphics.Color;
+import android.graphics.Typeface;
 import android.graphics.drawable.ColorDrawable;
 import android.text.Editable;
+import android.text.SpannableString;
+import android.text.Spanned;
 import android.text.TextWatcher;
+import android.text.style.ForegroundColorSpan;
+import android.text.style.StyleSpan;
 import android.util.DisplayMetrics;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -46,11 +51,11 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
-import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+
 public final class MedScreens {
 
     public interface Host {
@@ -108,6 +113,7 @@ public final class MedScreens {
     }
 
     private static final DateTimeFormatter DATE = DateTimeFormatter.ofPattern("yyyy.MM.dd");
+    private static boolean listShowsStopped;
 
     private MedScreens() {
     }
@@ -140,8 +146,7 @@ public final class MedScreens {
         TextView empty = root.findViewById(R.id.text_med_empty);
         int envelopes = store.activeEnvelopeCount();
         int medicines = store.activeMedicineCount();
-        summary.setText(activity.getString(R.string.med_list_summary, envelopes, medicines));
-        empty.setVisibility(store.envelopes().isEmpty() ? View.VISIBLE : View.GONE);
+        summary.setText(medicationSummary(activity, envelopes, medicines));
         TextView banner = root.findViewById(R.id.text_dev_banner);
         banner.setVisibility(store.hasDevListSample() ? View.VISIBLE : View.GONE);
         root.findViewById(R.id.button_dev_list).setVisibility(View.GONE);
@@ -151,8 +156,6 @@ public final class MedScreens {
         });
         LinearLayout active = root.findViewById(R.id.med_active);
         LinearLayout stopped = root.findViewById(R.id.med_stopped);
-        boolean anyActive = false;
-        boolean anyStopped = false;
         List<SavedEnvelope> ordered = new ArrayList<>(store.envelopes());
         ordered.sort((left, right) -> Long.compare(
                 right.getRegisteredAtMillis(),
@@ -160,16 +163,93 @@ public final class MedScreens {
         ));
         for (SavedEnvelope envelope : ordered) {
             LinearLayout target = envelope.isStopped() ? stopped : active;
-            if (envelope.isStopped()) {
-                anyStopped = true;
-            } else {
-                anyActive = true;
-            }
             addEnvelope(activity, store, host, target, envelope);
         }
-        root.findViewById(R.id.text_med_active).setVisibility(anyActive ? View.VISIBLE : View.GONE);
-        root.findViewById(R.id.text_med_stopped).setVisibility(anyStopped ? View.VISIBLE : View.GONE);
+        bindMedicationTabs(activity, root, active, stopped, empty, envelopes);
         return root;
+    }
+
+    private static void bindMedicationTabs(
+            AppCompatActivity activity,
+            View root,
+            LinearLayout active,
+            LinearLayout stopped,
+            TextView empty,
+            int activeCount
+    ) {
+        View tabs = root.findViewById(R.id.row_med_tabs);
+        TextView group = root.findViewById(R.id.text_med_group);
+        TextView activeLabel = root.findViewById(R.id.text_tab_med_active);
+        TextView stoppedLabel = root.findViewById(R.id.text_tab_med_stopped);
+        View activeLine = root.findViewById(R.id.line_tab_med_active);
+        View stoppedLine = root.findViewById(R.id.line_tab_med_stopped);
+        tabs.setVisibility(View.VISIBLE);
+        activeLabel.setText(activity.getString(R.string.med_tab_active, activeCount));
+        View.OnClickListener select = v -> {
+            listShowsStopped = v.getId() == R.id.tab_med_stopped;
+            applyMedicationTab(
+                    activity, active, stopped, group, empty,
+                    activeLabel, stoppedLabel, activeLine, stoppedLine
+            );
+        };
+        root.findViewById(R.id.tab_med_active).setOnClickListener(select);
+        root.findViewById(R.id.tab_med_stopped).setOnClickListener(select);
+        applyMedicationTab(
+                activity, active, stopped, group, empty,
+                activeLabel, stoppedLabel, activeLine, stoppedLine
+        );
+    }
+
+    private static void applyMedicationTab(
+            AppCompatActivity activity,
+            LinearLayout active,
+            LinearLayout stopped,
+            TextView group,
+            TextView empty,
+            TextView activeLabel,
+            TextView stoppedLabel,
+            View activeLine,
+            View stoppedLine
+    ) {
+        boolean stoppedTab = listShowsStopped;
+        boolean selectedEmpty = stoppedTab ? stopped.getChildCount() == 0 : active.getChildCount() == 0;
+        boolean otherHasItems = stoppedTab ? active.getChildCount() > 0 : stopped.getChildCount() > 0;
+        active.setVisibility(stoppedTab ? View.GONE : View.VISIBLE);
+        stopped.setVisibility(stoppedTab ? View.VISIBLE : View.GONE);
+        group.setVisibility(selectedEmpty ? View.GONE : View.VISIBLE);
+        empty.setVisibility(selectedEmpty ? View.VISIBLE : View.GONE);
+        if (selectedEmpty) {
+            empty.setText(otherHasItems ? R.string.med_list_tab_empty : R.string.med_list_empty);
+        }
+        activeLabel.setTextColor(activity.getColor(stoppedTab ? R.color.yakyeon_muted : R.color.yakyeon_text));
+        activeLabel.setTypeface(null, stoppedTab ? Typeface.NORMAL : Typeface.BOLD);
+        stoppedLabel.setTextColor(activity.getColor(stoppedTab ? R.color.yakyeon_text : R.color.yakyeon_muted));
+        stoppedLabel.setTypeface(null, stoppedTab ? Typeface.BOLD : Typeface.NORMAL);
+        activeLine.setVisibility(stoppedTab ? View.INVISIBLE : View.VISIBLE);
+        stoppedLine.setVisibility(stoppedTab ? View.VISIBLE : View.INVISIBLE);
+    }
+
+    private static CharSequence medicationSummary(AppCompatActivity activity, int envelopes, int medicines) {
+        String text = activity.getString(R.string.med_list_summary, envelopes, medicines);
+        SpannableString span = new SpannableString(text);
+        int color = activity.getColor(R.color.yakyeon_text);
+        for (int index = 0; index < text.length(); index++) {
+            if (!Character.isDigit(text.charAt(index))) {
+                continue;
+            }
+            int end = index;
+            while (end < text.length()) {
+                char mark = text.charAt(end);
+                if (!Character.isDigit(mark) && mark != '개' && mark != '종') {
+                    break;
+                }
+                end++;
+            }
+            span.setSpan(new StyleSpan(Typeface.BOLD), index, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+            span.setSpan(new ForegroundColorSpan(color), index, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+            index = end;
+        }
+        return span;
     }
 
     public static AlertDialog consentDialog(AppCompatActivity activity, MedicationStore store, Host host) {
@@ -634,8 +714,10 @@ public final class MedScreens {
                     showNeedConfirm(activity);
                     return;
                 case MISSING_TIME:
-                case TOO_CLOSE:
                     showTimeError(activity);
+                    return;
+                case TOO_CLOSE:
+                    showTimeGap(activity);
                     return;
                 case OK:
                 case MISSING_REQUIRED:
@@ -658,8 +740,10 @@ public final class MedScreens {
                 showNeedConfirm(activity);
                 break;
             case MISSING_TIME:
-            case TOO_CLOSE:
                 showTimeError(activity);
+                break;
+            case TOO_CLOSE:
+                showTimeGap(activity);
                 break;
             case MISSING_REQUIRED:
             default:
@@ -674,6 +758,15 @@ public final class MedScreens {
             Host host,
             View anchor
     ) {
+        SavedEnvelope editing = store.alarmEditEnvelope();
+        if (editing != null
+                && MedicationRules.checkAlarmTimes(
+                        MedicationRules.selectedRounds(editing),
+                        store.alarmEditMinutes()
+                ) == MedicationRules.TimeCheck.TOO_CLOSE) {
+            showTimeGap(activity);
+            return;
+        }
         if (store.saveAlarmEdit(zone(), System.currentTimeMillis())) {
             host.popTo(MedScreen.LIST);
             host.showMessage(activity.getString(R.string.med_local_saved));
@@ -686,6 +779,25 @@ public final class MedScreens {
         ConfirmDialog.show(
                 activity,
                 activity.getString(R.string.med_need_confirm_body),
+                "",
+                activity.getString(R.string.action_confirm),
+                null,
+                new ConfirmDialog.Callback() {
+                    @Override
+                    public void onConfirm() {
+                    }
+
+                    @Override
+                    public void onCancel() {
+                    }
+                }
+        );
+    }
+
+    private static void showTimeGap(AppCompatActivity activity) {
+        ConfirmDialog.show(
+                activity,
+                activity.getString(R.string.med_time_gap),
                 "",
                 activity.getString(R.string.action_confirm),
                 null,
@@ -767,26 +879,16 @@ public final class MedScreens {
         String name = envelope.getHospitalName().trim().isEmpty()
                 ? activity.getString(R.string.med_slot_empty_name)
                 : envelope.getHospitalName();
-        ((TextView) card.findViewById(R.id.text_envelope_name)).setText(name);
-        ((TextView) card.findViewById(R.id.text_envelope_count)).setText(
-                activity.getString(R.string.med_bundle_count, envelope.medicines().size())
-        );
-        TextView badge = card.findViewById(R.id.text_envelope_badge);
+        String compartment = envelope.getSlotIndex() == null
+                ? null
+                : MainScreens.compartmentCaption(activity, envelope.getSlotIndex() + 1L);
+        bindEnvelopeHeader(activity, card, name, envelope.medicines().size(), latestLocalEnd(envelope), compartment);
         View actions = card.findViewById(R.id.row_envelope_actions);
         View stop = card.findViewById(R.id.button_envelope_stop);
         if (envelope.isStopped()) {
-            badge.setText(R.string.med_stopped);
-            badge.setTextColor(activity.getColor(R.color.yakyeon_muted));
-            badge.setBackgroundResource(R.drawable.bg_med_ended_badge);
             actions.setVisibility(View.GONE);
             stop.setVisibility(View.GONE);
         } else {
-            Long days = envelopeDaysLeft(envelope);
-            if (days == null) {
-                badge.setVisibility(View.GONE);
-            } else {
-                badge.setText(activity.getString(R.string.med_days_left, days));
-            }
             card.findViewById(R.id.button_edit_time).setOnClickListener(v -> {
                 if (store.beginAlarmEdit(envelope.getId())) {
                     host.openScreen(MedScreen.ALARM);
@@ -820,7 +922,7 @@ public final class MedScreens {
         }
         LinearLayout medicines = card.findViewById(R.id.envelope_medicines);
         for (SavedMedicine medicine : envelope.medicines()) {
-            View row = LayoutInflater.from(activity).inflate(R.layout.item_med_list_medicine, medicines, false);
+            View row = LayoutInflater.from(activity).inflate(R.layout.item_med_envelope_medicine, medicines, false);
             ((TextView) row.findViewById(R.id.text_medicine_name)).setText(displayName(activity, medicine.getName()));
             ((TextView) row.findViewById(R.id.text_medicine_frequency)).setText(
                     frequencyLine(activity, medicine.rounds().size(), timingsText(activity, medicine.timings()))
@@ -838,22 +940,49 @@ public final class MedScreens {
         target.addView(card);
     }
 
-    private static Long envelopeDaysLeft(SavedEnvelope envelope) {
-        LocalDate today = LocalDate.now(zone());
-        Long soonest = null;
+    private static LocalDate latestLocalEnd(SavedEnvelope envelope) {
+        LocalDate latest = null;
         for (SavedMedicine medicine : envelope.medicines()) {
             if (medicine.getEnd() == null) {
                 continue;
             }
-            long days = ChronoUnit.DAYS.between(today, medicine.getEnd());
-            if (days < 0) {
-                continue;
-            }
-            if (soonest == null || days < soonest) {
-                soonest = days;
+            if (latest == null || medicine.getEnd().isAfter(latest)) {
+                latest = medicine.getEnd();
             }
         }
-        return soonest;
+        return latest;
+    }
+
+    private static void bindEnvelopeHeader(
+            AppCompatActivity activity,
+            View card,
+            String hospital,
+            int medicineCount,
+            LocalDate end,
+            String compartmentLabel
+    ) {
+        ((TextView) card.findViewById(R.id.text_envelope_name)).setText(hospital);
+        ((TextView) card.findViewById(R.id.text_envelope_count)).setText(
+                activity.getString(R.string.med_included_count, medicineCount)
+        );
+        TextView endView = card.findViewById(R.id.text_envelope_end);
+        if (end == null) {
+            endView.setText(R.string.med_end_unset);
+            endView.setTextColor(activity.getColor(R.color.yakyeon_muted));
+        } else {
+            endView.setText(DATE.format(end));
+            endView.setTextColor(activity.getColor(R.color.yakyeon_brand));
+        }
+        View chip = card.findViewById(R.id.row_envelope_slot);
+        TextView slotButton = card.findViewById(R.id.button_change_slot);
+        if (compartmentLabel == null || compartmentLabel.isEmpty()) {
+            chip.setVisibility(View.GONE);
+            slotButton.setText(R.string.med_assign_slot);
+        } else {
+            chip.setVisibility(View.VISIBLE);
+            ((TextView) card.findViewById(R.id.text_envelope_slot)).setText(compartmentLabel);
+            slotButton.setText(R.string.med_change_slot_action);
+        }
     }
 
     private static View draftRow(
@@ -1801,7 +1930,7 @@ public final class MedScreens {
             card.setBackgroundResource(R.drawable.bg_slot_idle);
         }
         TextView title = card.findViewById(R.id.text_choice_title);
-        title.setText(activity.getString(R.string.pillbox_slot_name, index + 1));
+        title.setText(MainScreens.compartmentCaption(activity, index + 1L));
         TextView detail = card.findViewById(R.id.text_choice_detail);
         TextView badge = card.findViewById(R.id.text_choice_badge);
         android.widget.ImageView state = card.findViewById(R.id.icon_choice_state);
@@ -2122,29 +2251,24 @@ public final class MedScreens {
         int medicines = 0;
         int activeCount = 0;
         for (HomeContracts.Prescription prescription : rows) {
-            medicines += prescription.medications.size();
-            if (!prescriptionEnded(prescription)) {
-                activeCount++;
+            if (prescriptionEnded(prescription)) {
+                continue;
             }
+            activeCount++;
+            medicines += prescription.medications.size();
         }
-        summary.setText(activity.getString(R.string.med_list_summary, activeCount, medicines));
-        empty.setVisibility(rows.isEmpty() ? View.VISIBLE : View.GONE);
+        summary.setText(medicationSummary(activity, activeCount, medicines));
         LinearLayout active = root.findViewById(R.id.med_active);
         LinearLayout stopped = root.findViewById(R.id.med_stopped);
-        boolean anyActive = false;
-        boolean anyStopped = false;
         for (HomeContracts.Prescription prescription : rows) {
             boolean ended = prescriptionEnded(prescription);
             if (ended) {
-                anyStopped = true;
                 stopped.addView(serverEnvelope(activity, prescription, pillboxView, pillbox, true, writes, host));
             } else {
-                anyActive = true;
                 active.addView(serverEnvelope(activity, prescription, pillboxView, pillbox, false, writes, host));
             }
         }
-        root.findViewById(R.id.text_med_active).setVisibility(anyActive ? View.VISIBLE : View.GONE);
-        root.findViewById(R.id.text_med_stopped).setVisibility(anyStopped ? View.VISIBLE : View.GONE);
+        bindMedicationTabs(activity, root, active, stopped, empty, activeCount);
         return root;
     }
 
@@ -2301,7 +2425,12 @@ public final class MedScreens {
             if (!any) {
                 return;
             }
-            if (MedicationRules.checkAlarmTimes(selected, minutes) != MedicationRules.TimeCheck.OK) {
+            MedicationRules.TimeCheck times = MedicationRules.checkAlarmTimes(selected, minutes);
+            if (times == MedicationRules.TimeCheck.TOO_CLOSE) {
+                showTimeGap(activity);
+                return;
+            }
+            if (times != MedicationRules.TimeCheck.OK) {
                 ShortMessage.show(root, activity.getString(R.string.med_time_rule));
                 return;
             }
@@ -2316,15 +2445,12 @@ public final class MedScreens {
         return MedicationRules.hasRequiredFields(medicine);
     }
 
-    private static String serverSlotStatus(
+    private static String serverCompartmentLabel(
             AppCompatActivity activity,
             long prescriptionId,
             MainScreens.CareView pillboxView,
             CareContracts.Pillbox pillbox
     ) {
-        if (pillboxView == MainScreens.CareView.ABSENT) {
-            return activity.getString(R.string.pillbox_slot_blocked);
-        }
         if (pillboxView != MainScreens.CareView.READY || pillbox == null) {
             return null;
         }
@@ -2333,9 +2459,44 @@ public final class MedScreens {
         }
         CareContracts.Compartment compartment = CareContracts.compartmentForPrescription(pillbox, prescriptionId);
         if (compartment == null) {
-            return activity.getString(R.string.med_slot_unassigned);
+            return null;
         }
-        return activity.getString(R.string.med_slot_server_current, compartment.compartmentNo);
+        return MainScreens.compartmentCaption(activity, compartment.compartmentNo);
+    }
+
+    private static LocalDate latestServerEnd(HomeContracts.Prescription prescription, boolean ended) {
+        LocalDate latest = null;
+        for (HomeContracts.Medication medication : prescription.medications) {
+            LocalDate date = ended ? parseIsoDate(medication.endedOn) : null;
+            if (date == null) {
+                date = parseIsoDate(medication.endDate);
+            }
+            if (date == null) {
+                continue;
+            }
+            if (latest == null || date.isAfter(latest)) {
+                latest = date;
+            }
+        }
+        return latest;
+    }
+
+    private static String assignedCompartment(AppCompatActivity activity, long compartmentNo) {
+        return activity.getString(
+                R.string.med_slot_server_current,
+                MainScreens.compartmentCaption(activity, compartmentNo)
+        );
+    }
+
+    private static LocalDate parseIsoDate(String value) {
+        if (value == null || value.length() < 10) {
+            return null;
+        }
+        try {
+            return LocalDate.parse(value.substring(0, 10));
+        } catch (java.time.format.DateTimeParseException exception) {
+            return null;
+        }
     }
 
     private static boolean prescriptionEnded(HomeContracts.Prescription prescription) {
@@ -2379,7 +2540,7 @@ public final class MedScreens {
         TextView note = root.findViewById(R.id.text_slot_note);
         String status = current == null
                 ? activity.getString(R.string.med_slot_unassigned)
-                : activity.getString(R.string.med_slot_server_current, current.compartmentNo);
+                : assignedCompartment(activity, current.compartmentNo);
         note.setText(assignGuidance(activity) + "\n" + status);
         LinearLayout list = root.findViewById(R.id.slot_list);
         List<CareContracts.Compartment> compartments = pillbox == null
@@ -2430,7 +2591,7 @@ public final class MedScreens {
             card.setBackgroundResource(R.drawable.bg_slot_idle);
         }
         TextView title = card.findViewById(R.id.text_choice_title);
-        title.setText(activity.getString(R.string.pillbox_slot_name, compartment.compartmentNo));
+        title.setText(MainScreens.compartmentCaption(activity, compartment.compartmentNo));
         TextView detail = card.findViewById(R.id.text_choice_detail);
         TextView badge = card.findViewById(R.id.text_choice_badge);
         android.widget.ImageView state = card.findViewById(R.id.icon_choice_state);
@@ -2448,7 +2609,7 @@ public final class MedScreens {
             state.setContentDescription(activity.getString(R.string.pillbox_slot_in_use));
         } else if (selected) {
             detail.setText(current
-                    ? activity.getString(R.string.med_slot_server_current, compartment.compartmentNo)
+                    ? assignedCompartment(activity, compartment.compartmentNo)
                     : activity.getString(R.string.pillbox_slot_chosen));
             detail.setTextColor(activity.getColor(R.color.yakyeon_brand));
             state.setVisibility(View.VISIBLE);
@@ -2482,28 +2643,20 @@ public final class MedScreens {
         String name = prescription.hospitalName == null || prescription.hospitalName.trim().isEmpty()
                 ? activity.getString(R.string.med_slot_empty_name)
                 : prescription.hospitalName;
-        ((TextView) card.findViewById(R.id.text_envelope_name)).setText(name);
-        String count = activity.getString(R.string.med_bundle_count, prescription.medications.size());
-        String slotStatus = serverSlotStatus(activity, prescription.prescriptionId, pillboxView, pillbox);
-        if (slotStatus != null) {
-            count = count + "\n" + slotStatus;
-        }
-        ((TextView) card.findViewById(R.id.text_envelope_count)).setText(count);
-        TextView badge = card.findViewById(R.id.text_envelope_badge);
+        bindEnvelopeHeader(
+                activity,
+                card,
+                name,
+                prescription.medications.size(),
+                latestServerEnd(prescription, ended),
+                serverCompartmentLabel(activity, prescription.prescriptionId, pillboxView, pillbox)
+        );
         View actions = card.findViewById(R.id.row_envelope_actions);
         View stop = card.findViewById(R.id.button_envelope_stop);
         if (ended || !writes) {
-            if (ended) {
-                badge.setText(R.string.med_stopped);
-                badge.setTextColor(activity.getColor(R.color.yakyeon_muted));
-                badge.setBackgroundResource(R.drawable.bg_med_ended_badge);
-            } else {
-                badge.setVisibility(View.GONE);
-            }
             actions.setVisibility(View.GONE);
             stop.setVisibility(View.GONE);
         } else {
-            badge.setVisibility(View.GONE);
             card.findViewById(R.id.button_edit_time).setOnClickListener(v ->
                     host.openServerSchedule(prescription.prescriptionId));
             card.findViewById(R.id.button_change_slot).setOnClickListener(v ->
@@ -2530,14 +2683,19 @@ public final class MedScreens {
         }
         LinearLayout medicines = card.findViewById(R.id.envelope_medicines);
         for (HomeContracts.Medication medication : prescription.medications) {
-            View row = LayoutInflater.from(activity).inflate(R.layout.item_med_list_medicine, medicines, false);
+            View row = LayoutInflater.from(activity).inflate(R.layout.item_med_envelope_medicine, medicines, false);
             ((TextView) row.findViewById(R.id.text_medicine_name)).setText(displayName(activity, medication.drugName));
-            int times = medication.prn
-                    ? medication.timingSlots.size()
-                    : (int) medication.timesPerDay;
-            ((TextView) row.findViewById(R.id.text_medicine_frequency)).setText(
-                    frequencyLine(activity, times, serverMealLabel(activity, medication))
-            );
+            String meal = serverMealLabel(activity, medication);
+            String schedule;
+            if (medication.prn) {
+                schedule = activity.getString(R.string.round_prn);
+                if (meal != null && !meal.isEmpty()) {
+                    schedule = schedule + " · " + meal;
+                }
+            } else {
+                schedule = frequencyLine(activity, (int) medication.timesPerDay, meal);
+            }
+            ((TextView) row.findViewById(R.id.text_medicine_frequency)).setText(schedule);
             if (!ended && writes && !HomeContracts.STATUS_ENDED.equals(medication.status)) {
                 row.setOnClickListener(v -> ConfirmDialog.show(
                         activity,

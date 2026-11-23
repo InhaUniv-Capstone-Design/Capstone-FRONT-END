@@ -115,7 +115,7 @@ public class ShareSummaryTest {
     }
 
     @Test
-    public void knownActiveMedicineStaysTakingWhenPlannedEndIsPast() {
+    public void plannedEndInsideTheSelectedPeriodIsFinishedEvenWhenStatusIsActive() {
         ShareSummary summary = ShareSummary.document(
                 "김약연",
                 LocalDate.of(2026, 10, 1),
@@ -135,9 +135,85 @@ public class ShareSummaryTest {
                 null,
                 null
         );
-        assertEquals(1, summary.taking.size());
-        assertEquals("현재약", summary.taking.get(0).name);
-        assertTrue(summary.finished.isEmpty());
+        assertTrue(summary.taking.isEmpty());
+        assertEquals(1, summary.finished.size());
+        assertEquals("현재약", summary.finished.get(0).name);
+    }
+
+    @Test
+    public void selectedPeriodClassifiesOverlapAndIgnoresCurrentStatus() {
+        ShareSummary summary = ShareSummary.document(
+                "김약연",
+                LocalDate.of(2026, 11, 16),
+                LocalDate.of(2026, 11, 18),
+                java.util.Arrays.asList(
+                        listed("미래약", LocalDate.of(2026, 11, 19), LocalDate.of(2026, 11, 27), false),
+                        listed("기간내종료", LocalDate.of(2026, 11, 10), LocalDate.of(2026, 11, 17), false),
+                        listed("기간내복용", LocalDate.of(2026, 11, 10), LocalDate.of(2026, 11, 27), false),
+                        listed("이전종료", LocalDate.of(2026, 11, 10), LocalDate.of(2026, 11, 15), true),
+                        listed("마지막날", LocalDate.of(2026, 11, 10), LocalDate.of(2026, 11, 18), false)
+                ),
+                true,
+                true,
+                true,
+                null,
+                null,
+                null
+        );
+        assertEquals(2, summary.taking.size());
+        assertEquals("기간내복용", summary.taking.get(0).name);
+        assertEquals("마지막날", summary.taking.get(1).name);
+        assertEquals(1, summary.finished.size());
+        assertEquals("기간내종료", summary.finished.get(0).name);
+    }
+
+    @Test
+    public void finishedOnlyOmitsCurrentMedicinesAndDroppedDur() {
+        ShareSummary summary = ShareSummary.document(
+                "김약연",
+                LocalDate.of(2026, 11, 16),
+                LocalDate.of(2026, 11, 18),
+                java.util.Arrays.asList(
+                        listed("기간내복용", LocalDate.of(2026, 11, 10), LocalDate.of(2026, 11, 27), false),
+                        listed("기간내종료", LocalDate.of(2026, 11, 10), LocalDate.of(2026, 11, 17), false)
+                ),
+                false,
+                true,
+                true,
+                null,
+                null,
+                null
+        );
+        assertTrue(summary.taking.isEmpty());
+        assertEquals(1, summary.finished.size());
+        assertEquals("기간내종료", summary.finished.get(0).name);
+        assertFalse(summary.includeDur);
+        assertFalse(summary.plainText().contains(ShareSummary.TITLE_DUR));
+
+        ShareSummary withDur = ShareSummary.document(
+                "김약연",
+                LocalDate.of(2026, 11, 16),
+                LocalDate.of(2026, 11, 18),
+                java.util.Collections.emptyList(),
+                true,
+                true,
+                true,
+                java.util.Collections.singletonList("기간내복용 ~ 기간내종료"),
+                null,
+                null
+        );
+        assertTrue(withDur.includeDur);
+        assertEquals(1, withDur.interactions.size());
+        assertTrue(withDur.plainText().contains(ShareSummary.TITLE_DUR));
+    }
+
+    private static ShareSummary.ListedMedicine listed(
+            String name,
+            LocalDate start,
+            LocalDate end,
+            boolean ended
+    ) {
+        return new ShareSummary.ListedMedicine(name, "", start, end, ended, true);
     }
 
     @Test

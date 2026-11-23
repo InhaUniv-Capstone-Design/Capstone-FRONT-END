@@ -2,7 +2,7 @@
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/white"
+    android:background="@color/yakyeon_canvas"
     android:clipChildren="false"
     android:clipToPadding="false"
     android:fillViewport="true"
@@ -53,6 +53,75 @@
             android:textSize="12sp"
             android:visibility="gone" />
 
+        <LinearLayout
+            android:id="@+id/row_med_tabs"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="18dp"
+            android:orientation="horizontal"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:id="@+id/tab_med_active"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:background="?attr/selectableItemBackground"
+                android:orientation="vertical"
+                android:paddingEnd="4dp">
+
+                <TextView
+                    android:id="@+id/text_tab_med_active"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textColor="@color/yakyeon_text"
+                    android:textSize="15sp"
+                    android:textStyle="bold" />
+
+                <View
+                    android:id="@+id/line_tab_med_active"
+                    android:layout_width="match_parent"
+                    android:layout_height="2dp"
+                    android:layout_marginTop="8dp"
+                    android:background="@color/yakyeon_brand" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/tab_med_stopped"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="22dp"
+                android:background="?attr/selectableItemBackground"
+                android:orientation="vertical">
+
+                <TextView
+                    android:id="@+id/text_tab_med_stopped"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/med_stopped"
+                    android:textColor="@color/yakyeon_muted"
+                    android:textSize="15sp" />
+
+                <View
+                    android:id="@+id/line_tab_med_stopped"
+                    android:layout_width="match_parent"
+                    android:layout_height="2dp"
+                    android:layout_marginTop="8dp"
+                    android:background="@color/yakyeon_brand"
+                    android:visibility="invisible" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/text_med_group"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:text="@string/med_group_heading"
+            android:textColor="@color/yakyeon_brand"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:visibility="gone" />
+
         <TextView
             android:id="@+id/text_med_empty"
             android:layout_width="match_parent"
@@ -62,34 +131,12 @@
             android:textColor="@color/yakyeon_muted"
             android:visibility="gone" />
 
-        <TextView
-            android:id="@+id/text_med_active"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="20dp"
-            android:text="@string/med_active_heading"
-            android:textColor="@color/yakyeon_brand"
-            android:textSize="15sp"
-            android:textStyle="bold"
-            android:visibility="gone" />
-
         <LinearLayout
             android:id="@+id/med_active"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:clipChildren="false"
             android:orientation="vertical" />
-
-        <TextView
-            android:id="@+id/text_med_stopped"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="20dp"
-            android:text="@string/med_stopped_heading"
-            android:textColor="@color/yakyeon_brand"
-            android:textSize="15sp"
-            android:textStyle="bold"
-            android:visibility="gone" />
 
         <LinearLayout
             android:id="@+id/med_stopped"

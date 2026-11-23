@@ -16,3 +16,5 @@ local.properties
 .idea/
 # Firebase client config. Contains an API key and stays on the machine.
 app/google-services.json
+# Local test evidence. Screenshots, logcat, and result notes stay on this machine.
+/test-results/

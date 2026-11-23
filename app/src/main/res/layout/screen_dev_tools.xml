@@ -142,6 +142,11 @@
                 android:text="@string/home_dev_scenario_clear" />
 
             <TextView
+                android:id="@+id/button_dev_trial_clear"
+                style="@style/Widget.Yakyeon.DevFixture"
+                android:text="@string/home_dev_trial_clear" />
+
+            <TextView
                 android:id="@+id/button_dev_care_link"
                 style="@style/Widget.Yakyeon.DevFixture"
                 android:text="@string/home_dev_care_link" />

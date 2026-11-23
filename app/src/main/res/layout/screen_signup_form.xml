@@ -90,6 +90,14 @@
                 android:layout_marginTop="5dp" />
 
             <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:text="@string/auth_birth_under14"
+                android:textColor="@color/yakyeon_muted"
+                android:textSize="11sp" />
+
+            <TextView
                 style="@style/Widget.Yakyeon.FieldLabel"
                 android:text="@string/auth_phone_label" />
 

@@ -217,6 +217,7 @@ public class MainActivity extends AppCompatActivity
     private CareContracts.Pillbox serverSlotPillbox;
     private boolean serverSlotBusy;
     private static final long HOME_POLL_INTERVAL_MS = 10_000L;
+    private static final long PILLBOX_POLL_INTERVAL_MS = 10_000L;
     private static final long BOX_TAKEN_RETRY_MS = 1_500L;
     private final Handler homePollHandler = new Handler(Looper.getMainLooper());
     private final Runnable boxTakenRetry = new Runnable() {
@@ -243,6 +244,21 @@ public class MainActivity extends AppCompatActivity
         }
     };
     private boolean homePollScheduled;
+    private boolean pillboxPollScheduled;
+    private boolean pillboxLoadInFlight;
+    private int pillboxRequestSeq;
+    private final Runnable pillboxPollTick = new Runnable() {
+        @Override
+        public void run() {
+            if (!pillboxPollScheduled || !pillboxPollWanted()) {
+                pillboxPollScheduled = false;
+                return;
+            }
+            Log.i("PillboxPoll", "tick");
+            requestPillboxRefresh();
+            homePollHandler.postDelayed(this, PILLBOX_POLL_INTERVAL_MS);
+        }
+    };
     private boolean activityResumed;
     private boolean homeLoadInFlight;
     private boolean homeArmed;
@@ -488,7 +504,7 @@ public class MainActivity extends AppCompatActivity
 
     @Override
     public void onManualCheck() {
-        if (!ManualCheckGate.available()) {
+        if (!ManualCheckGate.available() || isSignedIn()) {
             return;
         }
         if (YakyeonRepositoryProvider.get().session().getAccountType() == null) {
@@ -973,7 +989,7 @@ public class MainActivity extends AppCompatActivity
     }
 
     public void openDevTools() {
-        if (!debuggable()) {
+        if (!debuggable() || isSignedIn()) {
             return;
         }
         navigator.openNonMain(MainScreens.DEV_TOOLS);
@@ -1075,6 +1091,7 @@ public class MainActivity extends AppCompatActivity
         verificationHandler.removeCallbacks(homeDateRollover);
         cancelDelayedPhoneConfirm();
         stopHomePolling();
+        stopPillboxPolling();
         homePollHandler.removeCallbacks(boxTakenRetry);
         super.onDestroy();
     }
@@ -1113,6 +1130,10 @@ public class MainActivity extends AppCompatActivity
                 ShortMessage.show(screenContainer, getString(R.string.auth_birth_invalid));
                 return;
             case NOT_CONNECTED:
+                if (AuthValidation.isUnder14(birthdate)) {
+                    ShortMessage.show(screenContainer, getString(R.string.auth_birth_under14));
+                    return;
+                }
                 break;
             default:
                 ShortMessage.show(screenContainer, missingSignupMessage(check));
@@ -1874,6 +1895,7 @@ public class MainActivity extends AppCompatActivity
         } else {
             stopHomePolling();
         }
+        syncPillboxPolling();
         boolean scheduleVisible = isSignedIn() && showingSchedule();
         if (scheduleVisible && !scheduleOnScreen) {
             scheduleLoaded = false;
@@ -2560,6 +2582,7 @@ public class MainActivity extends AppCompatActivity
     protected void onPause() {
         activityResumed = false;
         stopHomePolling();
+        stopPillboxPolling();
         returnedFromBackground = true;
         super.onPause();
     }
@@ -2582,6 +2605,7 @@ public class MainActivity extends AppCompatActivity
                 rollHomeToToday();
             }
             syncHomePolling();
+            syncPillboxPolling();
             return;
         }
         returnedFromBackground = false;
@@ -2619,6 +2643,7 @@ public class MainActivity extends AppCompatActivity
             maybeSyncAccountScreens(screen);
         }
         syncHomePolling();
+        syncPillboxPolling();
     }
 
     private void maybeSyncAccountScreens(String screen) {
@@ -2877,6 +2902,12 @@ public class MainActivity extends AppCompatActivity
     private String messageFor(ApiException exception) {
         if (ApiCodes.LOGIN_LOCKED.equals(exception.code())) {
             return getString(R.string.auth_login_locked);
+        }
+        if (ApiCodes.CONSENT_REQUIRED.equals(exception.code())) {
+            String consent = ApiMessages.fallback(exception.code());
+            if (consent != null) {
+                return consent;
+            }
         }
         ApiFailure.Kind kind = exception.failure();
         if (kind == ApiFailure.Kind.NETWORK) {
@@ -3717,10 +3748,6 @@ public class MainActivity extends AppCompatActivity
             showNotice(getString(R.string.settings_share), getString(R.string.settings_share_too_long));
             return;
         }
-        if (!options.isIncludeCurrent()) {
-            showNotice(getString(R.string.settings_share), getString(R.string.settings_share_need_current));
-            return;
-        }
         if (!beginAccountRequest(getString(R.string.settings_share))) {
             return;
         }
@@ -3793,7 +3820,7 @@ public class MainActivity extends AppCompatActivity
                             includeCurrent,
                             includeFinished,
                             period,
-                            document.interactions,
+                            interactions ? document.interactions : null,
                             document.records,
                             document.adherence
                     ));
@@ -4619,7 +4646,12 @@ public class MainActivity extends AppCompatActivity
         MedicationStore store = YakyeonRepositoryProvider.get().medications();
         HomeRegistration.Prepared prepared = HomeRegistration.prepare(store.draft());
         MedicationRules.SaveBlock times = MedicationRules.validate(store.draft());
-        if (times == MedicationRules.SaveBlock.MISSING_TIME || times == MedicationRules.SaveBlock.TOO_CLOSE) {
+        if (times == MedicationRules.SaveBlock.TOO_CLOSE) {
+            SavedToast.dismiss(this);
+            showNotice(getString(R.string.med_time_gap), "");
+            return;
+        }
+        if (times == MedicationRules.SaveBlock.MISSING_TIME) {
             SavedToast.dismiss(this);
             showMessage(getString(R.string.med_time_rule));
             return;
@@ -5910,6 +5942,125 @@ public class MainActivity extends AppCompatActivity
         }
         homePollScheduled = false;
         Log.i("HomePoll", "stop");
+    }
+
+    private boolean showingPillbox() {
+        return navigator.isMainArea() && navigator.currentTab() == ScreenId.PILLBOX;
+    }
+
+    private boolean pillboxPollWanted() {
+        return activityResumed
+                && isAlive()
+                && isSignedIn()
+                && showingPillbox()
+                && pillboxView == MainScreens.CareView.READY
+                && settingsPatientId != null;
+    }
+
+    private void syncPillboxPolling() {
+        if (!pillboxPollWanted()) {
+            stopPillboxPolling();
+            return;
+        }
+        if (pillboxPollScheduled) {
+            return;
+        }
+        pillboxPollScheduled = true;
+        Log.i("PillboxPoll", "start");
+        homePollHandler.removeCallbacks(pillboxPollTick);
+        homePollHandler.postDelayed(pillboxPollTick, PILLBOX_POLL_INTERVAL_MS);
+    }
+
+    private void stopPillboxPolling() {
+        homePollHandler.removeCallbacks(pillboxPollTick);
+        if (!pillboxPollScheduled) {
+            return;
+        }
+        pillboxPollScheduled = false;
+        Log.i("PillboxPoll", "stop");
+    }
+
+    /**
+     * Reloads the pillbox while its tab is visible so IR pouch state can change
+     * without leaving the screen. A failed poll keeps the snapshot already shown.
+     */
+    private void requestPillboxRefresh() {
+        if (!pillboxPollWanted() || pillboxLoadInFlight || settingsPatientId == null) {
+            Log.i("PillboxPoll", "refresh skip inFlight=" + pillboxLoadInFlight);
+            return;
+        }
+        final int request = ++pillboxRequestSeq;
+        final int epoch = ++pillboxEpoch;
+        final long patientId = settingsPatientId;
+        pillboxLoadInFlight = true;
+        Log.i("PillboxPoll", "refresh patient=" + patientId);
+        ApiClient.execute(() -> {
+            try {
+                CareContracts.Pillbox loaded = CareApi.pillbox(getApplicationContext(), patientId);
+                runOnUiThread(() -> finishPillboxPoll(request, epoch, loaded));
+            } catch (ApiException exception) {
+                Log.i("PillboxPoll", "refresh failed " + exception.code());
+                runOnUiThread(() -> finishPillboxPoll(request, epoch, null));
+            }
+        });
+    }
+
+    private void finishPillboxPoll(int request, int epoch, CareContracts.Pillbox loaded) {
+        if (request != pillboxRequestSeq) {
+            return;
+        }
+        pillboxLoadInFlight = false;
+        if (!isAlive() || epoch != pillboxEpoch || loaded == null || loaded.device == null) {
+            return;
+        }
+        boolean changed = pillboxSensorChanged(pillboxSnapshot, loaded);
+        pillboxView = MainScreens.CareView.READY;
+        pillboxSnapshot = loaded;
+        pillboxMessage = null;
+        if (changed && activityResumed && showingPillbox()) {
+            refresh();
+        }
+    }
+
+    private static boolean pillboxSensorChanged(
+            CareContracts.Pillbox previous,
+            CareContracts.Pillbox next
+    ) {
+        if (previous == null || next == null || previous.device == null || next.device == null) {
+            return true;
+        }
+        if (previous.device.online != next.device.online) {
+            return true;
+        }
+        if (previous.compartments == null || next.compartments == null
+                || previous.compartments.size() != next.compartments.size()) {
+            return true;
+        }
+        for (int index = 0; index < next.compartments.size(); index++) {
+            CareContracts.Compartment before = previous.compartments.get(index);
+            CareContracts.Compartment after = next.compartments.get(index);
+            if (before.compartmentNo != after.compartmentNo
+                    || !sameText(before.state, after.state)
+                    || !sameBoolean(before.pouchPresent, after.pouchPresent)
+                    || !sameBoolean(before.alertActive, after.alertActive)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean sameText(String left, String right) {
+        if (left == null) {
+            return right == null;
+        }
+        return left.equals(right);
+    }
+
+    private static boolean sameBoolean(Boolean left, Boolean right) {
+        if (left == null) {
+            return right == null;
+        }
+        return left.equals(right);
     }
 
     /**

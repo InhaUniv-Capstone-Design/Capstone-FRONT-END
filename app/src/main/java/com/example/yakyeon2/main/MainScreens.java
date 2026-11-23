@@ -17,6 +17,7 @@ import com.example.yakyeon2.api.CareContracts;
 import com.example.yakyeon2.api.HomeContracts;
 import com.example.yakyeon2.data.AccountType;
 import com.example.yakyeon2.data.DevFixtures;
+import com.example.yakyeon2.data.DevTrialData;
 import com.example.yakyeon2.data.ScenarioPrescriptions;
 import com.example.yakyeon2.data.DoseRecord;
 import com.example.yakyeon2.data.DoseRound;
@@ -78,6 +79,8 @@ public final class MainScreens {
         void releaseCompartment(long mappingId);
 
         void exportClinicalShare();
+
+        void openDevTools();
     }
 
     public enum CareView {
@@ -108,6 +111,14 @@ public final class MainScreens {
     ) {
         View root = LayoutInflater.from(activity).inflate(R.layout.screen_home, null);
         paintGreeting(activity, root, userName, linkedPatientName);
+        if (debuggable) {
+            TextView subtitle = root.findViewById(R.id.text_home_subtitle);
+            subtitle.setText(R.string.home_dev_screen_note);
+            root.findViewById(R.id.text_home_greeting).setOnLongClickListener(v -> {
+                host.openDevTools();
+                return true;
+            });
+        }
         int count = session.medicationIds().size();
         TextView taking = root.findViewById(R.id.text_taking_count);
         taking.setText(activity.getString(R.string.home_taking_count, count));
@@ -767,6 +778,11 @@ public final class MainScreens {
                     removed
             ));
         });
+        root.findViewById(R.id.button_dev_trial_clear).setOnClickListener(v -> {
+            DevTrialData.clear(store);
+            host.refresh();
+            host.showMessage(activity.getString(R.string.home_dev_trial_clear));
+        });
         root.findViewById(R.id.button_dev_care_link).setOnClickListener(v ->
                 host.openDetail(LINK));
         root.findViewById(R.id.button_dev_hardware_early).setOnClickListener(v -> {
@@ -861,12 +877,16 @@ public final class MainScreens {
         filled.setVisibility(View.VISIBLE);
         List<DrugRelations.Pair> relations = DrugRelations.confirmedPairs(store);
         TextView devBanner = root.findViewById(R.id.text_graph_dev);
-        devBanner.setVisibility(store.isDevGraphRelationScenario() ? View.VISIBLE : View.GONE);
         TextView count = root.findViewById(R.id.text_graph_count);
-        int countText = store.isDevGraphRelationScenario()
-                ? R.string.graph_relation_count_dev
-                : R.string.graph_relation_count;
-        count.setText(activity.getString(countText, relations.size()));
+        if (store.isDevGraphRelationScenario()) {
+            devBanner.setVisibility(View.VISIBLE);
+            devBanner.setText(R.string.graph_dev_banner);
+            count.setText(activity.getString(R.string.graph_relation_count_dev, relations.size()));
+        } else {
+            devBanner.setVisibility(View.VISIBLE);
+            devBanner.setText(R.string.graph_scenario_note);
+            count.setText(activity.getString(R.string.graph_relation_count_local, relations.size()));
+        }
         FrameLayout canvas = root.findViewById(R.id.graph_canvas);
         DrugGraphView graphView = new DrugGraphView(activity);
         graphView.setListener(new DrugGraphView.Listener() {
@@ -992,8 +1012,7 @@ public final class MainScreens {
         LinearLayout slots = root.findViewById(R.id.pillbox_slots);
         for (int index = 0; index < store.sessionSlotCount(); index++) {
             SavedEnvelope envelope = envelopeInSlot(store, index);
-            // Open lid is the only anomaly. Detection is not connected, so slots stay normal.
-            View row = slotRow(activity, index, envelope, false);
+            View row = slotRow(activity, index, envelope);
             int slotIndex = index;
             row.setOnClickListener(v -> {
                 if (!store.pillboxConnected()) {
@@ -1235,48 +1254,30 @@ public final class MainScreens {
             Host host
     ) {
         View row = LayoutInflater.from(activity).inflate(R.layout.item_pillbox_slot, null);
-        ((TextView) row.findViewById(R.id.text_slot_number)).setText(String.valueOf(compartment.compartmentNo));
+        ((TextView) row.findViewById(R.id.text_slot_number)).setText(
+                compartmentCaption(activity, compartment.compartmentNo)
+        );
         TextView title = row.findViewById(R.id.text_slot_title);
         TextView status = row.findViewById(R.id.text_slot_status);
-        View alert = row.findViewById(R.id.slot_open_alert);
         LinearLayout medicines = row.findViewById(R.id.slot_medicines);
         if (CareContracts.EMPTY.equals(compartment.state)) {
             title.setText(R.string.pillbox_empty_label);
             status.setVisibility(View.GONE);
-            alert.setVisibility(View.GONE);
             medicines.setVisibility(View.GONE);
             return row;
         }
         String hospital = compartment.hospitalName == null ? "" : compartment.hospitalName.trim();
         title.setText(hospital.isEmpty() ? activity.getString(R.string.pillbox_in_use) : hospital);
-        boolean opened = CareContracts.showsOpened(compartment);
-        if (opened) {
-            row.setBackgroundResource(R.drawable.bg_pillbox_slot_open);
-            status.setText(R.string.pillbox_status_check);
-            status.setTextColor(activity.getColor(R.color.yakyeon_required));
-            status.setBackgroundResource(R.drawable.bg_slot_check);
-            int horizontal = dp(activity, 10);
-            int vertical = dp(activity, 4);
-            status.setPadding(horizontal, vertical, horizontal, vertical);
-            alert.setVisibility(View.VISIBLE);
-        } else if (CareContracts.PENDING_LOAD.equals(compartment.state)) {
+        if (CareContracts.PENDING_LOAD.equals(compartment.state)) {
             status.setText(R.string.pillbox_status_pending_load);
             status.setTextColor(activity.getColor(R.color.yakyeon_muted));
-            status.setBackground(null);
-            status.setPadding(0, 0, 0, 0);
-            status.setVisibility(View.VISIBLE);
-            alert.setVisibility(View.GONE);
         } else {
             status.setText(R.string.pillbox_status_normal);
             status.setTextColor(activity.getColor(R.color.yakyeon_brand));
-            status.setBackground(null);
-            status.setPadding(0, 0, 0, 0);
-            status.setVisibility(View.VISIBLE);
-            alert.setVisibility(View.GONE);
         }
-        if (opened) {
-            status.setVisibility(View.VISIBLE);
-        }
+        status.setBackground(null);
+        status.setPadding(0, 0, 0, 0);
+        status.setVisibility(View.VISIBLE);
         for (CareContracts.PillMedicine medicine : compartment.medications) {
             View line = LayoutInflater.from(activity).inflate(R.layout.item_pillbox_medicine, medicines, false);
             ((TextView) line.findViewById(R.id.text_medicine_name)).setText(medicine.drugName);
@@ -1342,43 +1343,43 @@ public final class MainScreens {
         return root;
     }
 
+    public static String compartmentCaption(AppCompatActivity activity, long compartmentNo) {
+        String mark;
+        if (compartmentNo == 1L) {
+            mark = "A";
+        } else if (compartmentNo == 2L) {
+            mark = "B";
+        } else if (compartmentNo == 3L) {
+            mark = "C";
+        } else {
+            return Long.toString(compartmentNo);
+        }
+        return activity.getString(R.string.pillbox_compartment_label, mark);
+    }
+
     private static View slotRow(
             AppCompatActivity activity,
             int index,
-            SavedEnvelope envelope,
-            boolean opened
+            SavedEnvelope envelope
     ) {
         View row = LayoutInflater.from(activity).inflate(R.layout.item_pillbox_slot, null);
-        ((TextView) row.findViewById(R.id.text_slot_number)).setText(String.valueOf(index + 1));
+        ((TextView) row.findViewById(R.id.text_slot_number)).setText(
+                compartmentCaption(activity, index + 1L)
+        );
         TextView title = row.findViewById(R.id.text_slot_title);
         TextView status = row.findViewById(R.id.text_slot_status);
-        View alert = row.findViewById(R.id.slot_open_alert);
         LinearLayout medicines = row.findViewById(R.id.slot_medicines);
         if (envelope == null) {
             title.setText(R.string.pillbox_empty_label);
             status.setVisibility(View.GONE);
-            alert.setVisibility(View.GONE);
             medicines.setVisibility(View.GONE);
             return row;
         }
         title.setText(prescriptionTitle(activity, envelope));
-        if (opened) {
-            row.setBackgroundResource(R.drawable.bg_pillbox_slot_open);
-            status.setText(R.string.pillbox_status_check);
-            status.setTextColor(activity.getColor(R.color.yakyeon_required));
-            status.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
-            status.setBackgroundResource(R.drawable.bg_slot_check);
-            int horizontal = dp(activity, 10);
-            int vertical = dp(activity, 4);
-            status.setPadding(horizontal, vertical, horizontal, vertical);
-            alert.setVisibility(View.VISIBLE);
-        } else {
-            status.setText(R.string.pillbox_status_normal);
-            status.setTextColor(activity.getColor(R.color.yakyeon_brand));
-            status.setBackground(null);
-            status.setPadding(0, 0, 0, 0);
-            alert.setVisibility(View.GONE);
-        }
+        status.setText(R.string.pillbox_status_normal);
+        status.setTextColor(activity.getColor(R.color.yakyeon_brand));
+        status.setBackground(null);
+        status.setPadding(0, 0, 0, 0);
         status.setVisibility(View.VISIBLE);
         for (SavedMedicine medicine : envelope.medicines()) {
             View line = LayoutInflater.from(activity).inflate(R.layout.item_pillbox_medicine, medicines, false);
