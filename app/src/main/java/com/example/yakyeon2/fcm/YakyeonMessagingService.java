@@ -1,6 +1,8 @@
 package com.example.yakyeon2.fcm;
 
 import android.content.Context;
+import android.content.Intent;
+import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
@@ -22,15 +24,37 @@ public class YakyeonMessagingService extends FirebaseMessagingService {
     private static final String PREFS = "yakyeon_push_seen";
     private static final String RECENT = "recent";
 
+    private boolean dropDisplay;
+
     @Override
     public void onCreate() {
         super.onCreate();
         YakyeonNotifications.ensureChannel(this);
+        YakyeonNotifications.dismissOpenNotices(this);
     }
 
     @Override
     public void onNewToken(@NonNull String token) {
         FcmRegistrar.onNewToken(this, token);
+    }
+
+    /**
+     * A display payload is posted by the SDK when this process is not in front, and
+     * {@link #onMessageReceived} never sees it. Dropping the display flag turns that
+     * open notice into a data message, which this service then ignores.
+     */
+    @Override
+    public void handleIntent(@NonNull Intent intent) {
+        dropDisplay = isRemoteDelivery(intent) && refusesDisplay(intent);
+        if (dropDisplay) {
+            intent.removeExtra("gcm.n.e");
+            intent.removeExtra("gcm.notification.e");
+        }
+        try {
+            super.handleIntent(intent);
+        } finally {
+            dropDisplay = false;
+        }
     }
 
     @Override
@@ -53,6 +77,16 @@ public class YakyeonMessagingService extends FirebaseMessagingService {
         boolean serverCopy = hasText(dataTitle) || hasText(dataBody);
         String title = serverCopy ? dataTitle : notificationTitle;
         String body = serverCopy ? dataBody : notificationBody;
+        boolean hideOpen = dropDisplay || PushMessages.hidesOpenNotice(
+                data,
+                dataTitle,
+                dataBody,
+                notificationTitle,
+                notificationBody
+        );
+        if (hideOpen) {
+            YakyeonNotifications.dismissOpenNotices(this);
+        }
         PushMessages.Incoming incoming = PushMessages.classify(data);
         boolean signedIn = AuthTokenStore.hasSession(this);
         boolean intakeCopy = PushMessages.confirmsIntake(
@@ -69,6 +103,15 @@ public class YakyeonMessagingService extends FirebaseMessagingService {
                 + " suppress=" + incoming.suppressBecauseTaken
                 + " intakeCopy=" + intakeCopy
                 + " hasSession=" + signedIn);
+        if (PushMessages.refreshesPillbox(data)) {
+            if (signedIn) {
+                Log.i("PillboxSensor", "post PillboxSensorRefresh.deliver silent");
+                new Handler(Looper.getMainLooper()).post(PillboxSensorRefresh::deliver);
+            } else {
+                Log.i("PillboxSensor", "skip silent refresh hasSession=false");
+            }
+            return;
+        }
         if (incoming.suppressBecauseTaken) {
             Log.d(FcmRegistrar.TAG, "이미 복용한 일정은 미복용 알림을 표시하지 않음");
             Log.i("BoxTaken", "stop suppressBecauseTaken kind=" + incoming.kind);
@@ -87,6 +130,10 @@ public class YakyeonMessagingService extends FirebaseMessagingService {
         } else {
             Log.i("BoxTaken", "skip deliver kind=" + incoming.kind + " hasSession=" + signedIn);
         }
+        if (hideOpen) {
+            Log.i("PillboxSensor", "skip open notice");
+            return;
+        }
         String shownTitle = title;
         String shownBody = body;
         if (!serverCopy) {
@@ -98,6 +145,26 @@ public class YakyeonMessagingService extends FirebaseMessagingService {
             return;
         }
         YakyeonNotifications.show(this, shownTitle, shownBody, data.get("notification_id"));
+    }
+
+    private static boolean isRemoteDelivery(Intent intent) {
+        String action = intent.getAction();
+        return "com.google.android.c2dm.intent.RECEIVE".equals(action)
+                || "com.google.firebase.messaging.RECEIVE_DIRECT_BOOT".equals(action);
+    }
+
+    private static boolean refusesDisplay(Intent intent) {
+        Bundle extras = intent.getExtras();
+        RemoteMessage message = new RemoteMessage(extras == null ? new Bundle() : extras);
+        Map<String, String> data = message.getData();
+        RemoteMessage.Notification notification = message.getNotification();
+        return PushMessages.hidesOpenNotice(
+                data,
+                data.get("title"),
+                data.get("body"),
+                notification == null ? null : notification.getTitle(),
+                notification == null ? null : notification.getBody()
+        );
     }
 
     private static boolean hasText(String value) {

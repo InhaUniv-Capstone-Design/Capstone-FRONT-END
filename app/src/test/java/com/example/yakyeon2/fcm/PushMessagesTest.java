@@ -67,6 +67,7 @@ public class PushMessagesTest {
         data.put("type", "GUARDIAN_OPEN");
         data.put("body", "약통이 열렸습니다.");
         assertEquals(PushMessages.Kind.PASSTHROUGH, PushMessages.classify(data).kind);
+        assertTrue(PushMessages.hidesOpenNotice(data, data.get("body")));
     }
 
     @Test
@@ -79,6 +80,7 @@ public class PushMessagesTest {
         Map<String, String> opened = new HashMap<>();
         opened.put("notif_type", "DEVICE_OPENED");
         assertEquals(PushMessages.Kind.PASSTHROUGH, PushMessages.classify(opened).kind);
+        assertTrue(PushMessages.hidesOpenNotice(opened));
         assertEquals(PushMessages.Kind.DOSE_REMINDER, classify("DOSE_REMINDER").kind);
 
         assertTrue(PushMessages.confirmsIntake("복용이 확인됐어요"));
@@ -87,6 +89,61 @@ public class PushMessagesTest {
         assertFalse(PushMessages.confirmsIntake("약 먹을 시간이에요"));
         assertFalse(PushMessages.confirmsIntake("약통이 열렸습니다."));
         assertFalse(PushMessages.confirmsIntake((String[]) null));
+    }
+
+    @Test
+    public void irTriggerRefreshesThePillboxWithoutCountingAsIntake() {
+        Map<String, String> sensed = new HashMap<>();
+        sensed.put("type", "IR_TRIGGER");
+        assertEquals(PushMessages.Kind.PASSTHROUGH, PushMessages.classify(sensed).kind);
+        assertTrue(PushMessages.refreshesPillbox(sensed));
+
+        sensed.put("type", "DEVICE");
+        sensed.put("signal_type", "ir_trigger");
+        assertEquals(PushMessages.Kind.PASSTHROUGH, PushMessages.classify(sensed).kind);
+        assertTrue(PushMessages.refreshesPillbox(sensed));
+
+        Map<String, String> button = new HashMap<>();
+        button.put("type", "BUTTON_PRESS");
+        assertFalse(PushMessages.refreshesPillbox(button));
+
+        Map<String, String> opened = new HashMap<>();
+        opened.put("notif_type", "DEVICE_OPENED");
+        assertFalse(PushMessages.refreshesPillbox(opened));
+        assertTrue(PushMessages.hidesOpenNotice(opened));
+        assertFalse(PushMessages.refreshesPillbox(null));
+        assertTrue(PushMessages.hidesOpenNotice(sensed));
+        Map<String, String> silent = new HashMap<>();
+        silent.put("type", "IR_TRIGGER");
+        assertTrue(PushMessages.refreshesPillbox(silent));
+        assertTrue(PushMessages.hidesOpenNotice(silent));
+        assertTrue(PushMessages.hidesOpenNotice(silent, "약통이 열렸습니다."));
+        assertTrue(PushMessages.hidesOpenNotice(null, "약통이 열렸습니다."));
+        assertFalse(PushMessages.hidesOpenNotice(button, "복용이 확인됐어요"));
+    }
+
+    @Test
+    public void newerOpenCopyStaysHiddenAndIntakeConfirmationStaysVisible() {
+        assertTrue(PushMessages.mentionsOpen("약통이 열렸어요"));
+        assertTrue(PushMessages.mentionsOpen("약통이 열렸지만 복용 확인 버튼은 눌리지 않았어요."));
+        assertTrue(PushMessages.hidesOpenNotice(null, "약통이 열렸어요"));
+        assertTrue(PushMessages.hidesOpenNotice(
+                null,
+                "약통이 열렸어요",
+                "약통이 열렸지만 복용 확인 버튼은 눌리지 않았어요."
+        ));
+
+        Map<String, String> opened = new HashMap<>();
+        opened.put("title", "약통이 열렸어요");
+        opened.put("body", "약통이 열렸지만 복용 확인 버튼은 눌리지 않았어요.");
+        assertTrue(PushMessages.hidesOpenNotice(opened));
+
+        assertFalse(PushMessages.mentionsOpen("복용이 확인됐어요", "약통의 복용 버튼이 눌렸어요."));
+        assertFalse(PushMessages.hidesOpenNotice(null, "복용이 확인됐어요", "약통의 복용 버튼이 눌렸어요."));
+        Map<String, String> taken = new HashMap<>();
+        taken.put("title", "복용이 확인됐어요");
+        taken.put("body", "약통의 복용 버튼이 눌렸어요.");
+        assertFalse(PushMessages.hidesOpenNotice(taken));
     }
 
     @Test

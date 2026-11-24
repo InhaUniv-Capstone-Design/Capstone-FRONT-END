@@ -48,7 +48,6 @@ public final class NotificationPreferences {
             return;
         }
         if (!enabled) {
-            savedBoxOpened = boxOpened;
             savedDoseButton = doseButton;
             savedMissedByDevice = missedByDevice;
             savedDeviceFault = deviceFault;
@@ -57,7 +56,7 @@ public final class NotificationPreferences {
             missedByDevice = false;
             deviceFault = false;
         } else {
-            boxOpened = savedBoxOpened;
+            boxOpened = false;
             doseButton = savedDoseButton;
             missedByDevice = savedMissedByDevice;
             deviceFault = savedDeviceFault;
@@ -66,10 +65,7 @@ public final class NotificationPreferences {
     }
 
     public void setBoxOpened(boolean boxOpened) {
-        if (!pillboxStatus) {
-            return;
-        }
-        this.boxOpened = boxOpened;
+        this.boxOpened = false;
     }
 
     public void setDoseButton(boolean doseButton) {
@@ -107,12 +103,12 @@ public final class NotificationPreferences {
         missedDose = missed;
         endingSoon = ending;
         pillboxStatus = device;
-        boxOpened = open;
+        boxOpened = false;
         doseButton = taken;
         missedByDevice = missedDevice;
         deviceFault = fault;
         if (device) {
-            savedBoxOpened = open;
+            savedBoxOpened = false;
             savedDoseButton = taken;
             savedMissedByDevice = missedDevice;
             savedDeviceFault = fault;
@@ -124,7 +120,7 @@ public final class NotificationPreferences {
         missedDose = true;
         endingSoon = true;
         pillboxStatus = true;
-        boxOpened = true;
+        boxOpened = false;
         doseButton = true;
         missedByDevice = true;
         deviceFault = true;
@@ -154,7 +150,7 @@ public final class NotificationPreferences {
         missedDose = on(raw, 1);
         endingSoon = on(raw, 2);
         pillboxStatus = on(raw, 3);
-        boxOpened = on(raw, 4);
+        boxOpened = false;
         doseButton = on(raw, 5);
         missedByDevice = on(raw, 6);
         deviceFault = on(raw, 7);

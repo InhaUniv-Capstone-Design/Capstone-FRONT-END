@@ -427,10 +427,8 @@ public final class SettingsScreens {
             page.addView(subhead(activity, R.string.settings_noti_detail_locked));
         }
         LinearLayout card = pillCard(activity, 0);
-        addDetailToggle(card, activity, enabled, R.string.settings_noti_open,
-                R.string.settings_noti_open_help, preferences.isBoxOpened(), preferences::setBoxOpened, account, true);
         addDetailToggle(card, activity, enabled, R.string.settings_noti_button,
-                R.string.settings_noti_button_help, preferences.isDoseButton(), preferences::setDoseButton, account, false);
+                R.string.settings_noti_button_help, preferences.isDoseButton(), preferences::setDoseButton, account, true);
         addDetailToggle(card, activity, enabled, R.string.settings_noti_hour,
                 R.string.settings_noti_hour_help, preferences.isMissedByDevice(), preferences::setMissedByDevice, account, false);
         addDetailToggle(card, activity, enabled, R.string.settings_noti_fault,

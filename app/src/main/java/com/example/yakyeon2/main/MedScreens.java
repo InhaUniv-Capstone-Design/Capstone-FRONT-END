@@ -2263,9 +2263,11 @@ public final class MedScreens {
         for (HomeContracts.Prescription prescription : rows) {
             boolean ended = prescriptionEnded(prescription);
             if (ended) {
-                stopped.addView(serverEnvelope(activity, prescription, pillboxView, pillbox, true, writes, host));
+                stopped.addView(serverEnvelope(
+                        activity, prescription, pillboxView, pillbox, stopped, true, writes, host));
             } else {
-                active.addView(serverEnvelope(activity, prescription, pillboxView, pillbox, false, writes, host));
+                active.addView(serverEnvelope(
+                        activity, prescription, pillboxView, pillbox, active, false, writes, host));
             }
         }
         bindMedicationTabs(activity, root, active, stopped, empty, activeCount);
@@ -2635,11 +2637,12 @@ public final class MedScreens {
             HomeContracts.Prescription prescription,
             MainScreens.CareView pillboxView,
             CareContracts.Pillbox pillbox,
+            LinearLayout target,
             boolean ended,
             boolean writes,
             Host host
     ) {
-        View card = LayoutInflater.from(activity).inflate(R.layout.item_med_envelope, null);
+        View card = LayoutInflater.from(activity).inflate(R.layout.item_med_envelope, target, false);
         String name = prescription.hospitalName == null || prescription.hospitalName.trim().isEmpty()
                 ? activity.getString(R.string.med_slot_empty_name)
                 : prescription.hospitalName;

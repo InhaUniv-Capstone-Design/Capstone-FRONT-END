@@ -31,7 +31,7 @@ public class SettingsStateTest {
 
         preferences.setPillboxStatus(true);
 
-        assertTrue(preferences.isBoxOpened());
+        assertFalse(preferences.isBoxOpened());
         assertFalse(preferences.isDoseButton());
         assertTrue(preferences.isMissedByDevice());
         assertFalse(preferences.isDeviceFault());
@@ -53,7 +53,7 @@ public class SettingsStateTest {
         assertTrue(restored.restoreState(saved));
         restored.setPillboxStatus(true);
 
-        assertTrue(restored.isBoxOpened());
+        assertFalse(restored.isBoxOpened());
         assertFalse(restored.isDoseButton());
         assertEquals(medications, store.exportState());
         assertFalse(restored.restoreState("11"));

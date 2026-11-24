@@ -92,6 +92,64 @@ public final class PushMessages {
     /** Title of the intake-detected notice. FCM delivers it as notification text. */
     public static final String INTAKE_CONFIRMED_TEXT = "복용이 확인됐어요";
 
+    /**
+     * IR pouch sensing is not an intake. The notice stays passthrough, and the
+     * pillbox screen reloads on its own.
+     */
+    public static boolean refreshesPillbox(Map<String, String> data) {
+        if ("IR_TRIGGER".equals(upper(first(data, "signal_type")))) {
+            return true;
+        }
+        String type = upper(first(data, "type", "notification_type", "notif_type", "event", "kind"));
+        if (type.isEmpty()) {
+            type = upper(first(data, "setting_key"));
+        }
+        return "IR_TRIGGER".equals(type);
+    }
+
+    /**
+     * The pillbox-open announcement is not shown. IR sensing can still reload the pillbox.
+     * Intake confirmation stays visible even when it shares a tray group with an open notice.
+     */
+    public static boolean hidesOpenNotice(Map<String, String> data, String... texts) {
+        if (confirmsIntake(texts) || confirmsIntake(values(data))) {
+            return false;
+        }
+        if ("IR_TRIGGER".equals(upper(first(data, "signal_type")))) {
+            return true;
+        }
+        String type = upper(first(data, "type", "notification_type", "notif_type", "event", "kind"));
+        if (type.isEmpty()) {
+            type = upper(first(data, "setting_key"));
+        }
+        if ("GUARDIAN_OPEN".equals(type) || "DEVICE_OPENED".equals(type)
+                || "DEVICE_OPEN".equals(type) || "BOX_OPENED".equals(type)
+                || "PILLBOX_OPENED".equals(type) || "IR_TRIGGER".equals(type)) {
+            return true;
+        }
+        return mentionsOpen(texts) || mentionsOpen(values(data));
+    }
+
+    /**
+     * Tray copy for a lid opening. Matches the older "열렸습니다" line and the
+     * later "열렸어요" / button-not-pressed line.
+     */
+    public static boolean mentionsOpen(String... texts) {
+        if (texts == null) {
+            return false;
+        }
+        for (String text : texts) {
+            if (text == null) {
+                continue;
+            }
+            String trimmed = text.trim();
+            if (trimmed.contains("약통이 열렸") || trimmed.contains("복용 확인 버튼은 눌리지 않")) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     public static boolean confirmsIntake(String... texts) {
         if (texts == null) {
             return false;
@@ -188,6 +246,13 @@ public final class PushMessages {
             return "";
         }
         return kind.name() + ":" + dose;
+    }
+
+    private static String[] values(Map<String, String> data) {
+        if (data == null || data.isEmpty()) {
+            return new String[0];
+        }
+        return data.values().toArray(new String[0]);
     }
 
     private static String first(Map<String, String> data, String... keys) {

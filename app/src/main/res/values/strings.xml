@@ -380,12 +380,9 @@
     <string name="settings_noti_ending">복용 종료 예정 알림</string>
     <string name="settings_noti_ending_help">종료 3일 전에 알려드려요</string>
     <string name="settings_noti_pillbox">약통 상태 알림</string>
-    <string name="settings_noti_pillbox_help">열림, 복용 확인, 기기 이상</string>
-    <string name="settings_noti_open_detail">보호자 공유 알림</string>
+    <string name="settings_noti_pillbox_help">복용 확인, 기기 이상</string>
     <string name="settings_noti_detail_title">약통 상태 알림</string>
     <string name="settings_noti_detail_locked">약통 상태 알림이 꺼져 있어 이 항목은 바뀌지 않습니다.</string>
-    <string name="settings_noti_open">약통 열림 알림</string>
-    <string name="settings_noti_open_help">약통이 열리면 알려드려요</string>
     <string name="settings_noti_button">복용 알림</string>
     <string name="settings_noti_button_help">복용 버튼을 누르면 알려드려요</string>
     <string name="settings_noti_hour">미복용 알림</string>

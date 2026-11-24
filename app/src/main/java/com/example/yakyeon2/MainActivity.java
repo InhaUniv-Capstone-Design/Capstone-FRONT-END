@@ -78,7 +78,9 @@ import com.example.yakyeon2.data.YakyeonSession;
 import com.example.yakyeon2.data.MedicationStore;
 import com.example.yakyeon2.data.EnvelopeDraft;
 import com.example.yakyeon2.fcm.BoxTakenRefresh;
+import com.example.yakyeon2.fcm.PillboxSensorRefresh;
 import com.example.yakyeon2.fcm.FcmRegistrar;
+import com.example.yakyeon2.fcm.PushMessages;
 import com.example.yakyeon2.fcm.YakyeonNotifications;
 import com.example.yakyeon2.main.MainScreens;
 import com.example.yakyeon2.main.MedicineNamePicker;
@@ -217,7 +219,8 @@ public class MainActivity extends AppCompatActivity
     private CareContracts.Pillbox serverSlotPillbox;
     private boolean serverSlotBusy;
     private static final long HOME_POLL_INTERVAL_MS = 10_000L;
-    private static final long PILLBOX_POLL_INTERVAL_MS = 10_000L;
+    private static final long PILLBOX_POLL_INTERVAL_MS = 1_500L;
+    private static final long PILLBOX_SENSOR_RETRY_MS = 1_500L;
     private static final long BOX_TAKEN_RETRY_MS = 1_500L;
     private final Handler homePollHandler = new Handler(Looper.getMainLooper());
     private final Runnable boxTakenRetry = new Runnable() {
@@ -257,6 +260,17 @@ public class MainActivity extends AppCompatActivity
             Log.i("PillboxPoll", "tick");
             requestPillboxRefresh();
             homePollHandler.postDelayed(this, PILLBOX_POLL_INTERVAL_MS);
+        }
+    };
+    private final Runnable pillboxSensorRetry = new Runnable() {
+        @Override
+        public void run() {
+            if (!isAlive() || !isSignedIn()) {
+                Log.i("PillboxSensor", "retry skip");
+                return;
+            }
+            Log.i("PillboxSensor", "retry reload");
+            refreshPillboxAfterSensor();
         }
     };
     private boolean activityResumed;
@@ -327,6 +341,7 @@ public class MainActivity extends AppCompatActivity
             }
     );
     private boolean notificationReady;
+    private boolean openNoticeOffRequested;
     private Snackbar requestProgress;
     private String progressText;
     private String accountSyncKey;
@@ -339,6 +354,7 @@ public class MainActivity extends AppCompatActivity
         FcmRegistrar.requestToken(this);
         if (AuthTokenStore.hasUsableAccess(this)) {
             FcmRegistrar.syncStored(this);
+            ensureOpenNoticeOff();
         }
         requestNotificationPermission();
         EdgeToEdge.enable(
@@ -1074,12 +1090,14 @@ public class MainActivity extends AppCompatActivity
     protected void onStart() {
         super.onStart();
         BoxTakenRefresh.attach(boxTakenHost);
+        PillboxSensorRefresh.attach(pillboxSensorHost);
         Log.i("BoxTaken", "onStart listener=true");
     }
 
     @Override
     protected void onStop() {
         BoxTakenRefresh.detach(boxTakenHost);
+        PillboxSensorRefresh.detach(pillboxSensorHost);
         Log.i("BoxTaken", "onStop listener=false");
         super.onStop();
     }
@@ -1087,12 +1105,14 @@ public class MainActivity extends AppCompatActivity
     @Override
     protected void onDestroy() {
         BoxTakenRefresh.detach(boxTakenHost);
+        PillboxSensorRefresh.detach(pillboxSensorHost);
         verificationHandler.removeCallbacks(verificationTick);
         verificationHandler.removeCallbacks(homeDateRollover);
         cancelDelayedPhoneConfirm();
         stopHomePolling();
         stopPillboxPolling();
         homePollHandler.removeCallbacks(boxTakenRetry);
+        homePollHandler.removeCallbacks(pillboxSensorRetry);
         super.onDestroy();
     }
 
@@ -2525,6 +2545,7 @@ public class MainActivity extends AppCompatActivity
                 AuthApi.login(getApplicationContext(), loginId, password);
                 FcmRegistrar.syncStored(getApplicationContext());
                 runOnUiThread(() -> {
+                    ensureOpenNoticeOff();
                     loginInFlight = false;
                     clearProgress();
                     if (!isAlive()) {
@@ -2549,6 +2570,7 @@ public class MainActivity extends AppCompatActivity
                 AuthApi.refresh(getApplicationContext());
                 FcmRegistrar.syncStored(getApplicationContext());
                 runOnUiThread(() -> {
+                    ensureOpenNoticeOff();
                     if (!isAlive()) {
                         return;
                     }
@@ -2577,6 +2599,7 @@ public class MainActivity extends AppCompatActivity
     private long ignoreBoxTakenUntil;
     private boolean boxTakenWhileWriting;
     private final BoxTakenRefresh.Host boxTakenHost = this::onBoxTakenRefresh;
+    private final PillboxSensorRefresh.Host pillboxSensorHost = this::onPillboxSensorRefresh;
 
     @Override
     protected void onPause() {
@@ -2591,7 +2614,12 @@ public class MainActivity extends AppCompatActivity
     protected void onResume() {
         super.onResume();
         activityResumed = true;
+        YakyeonNotifications.dismissOpenNotices(this);
+        if (isSignedIn()) {
+            ensureOpenNoticeOff();
+        }
         boolean pendingBoxTaken = BoxTakenRefresh.consumePending();
+        boolean pendingPillboxSensor = PillboxSensorRefresh.consumePending();
         Log.i("BoxTaken", "onResume pendingConsumed=" + pendingBoxTaken
                 + " fromBackground=" + returnedFromBackground
                 + " signedIn=" + isSignedIn());
@@ -2599,6 +2627,9 @@ public class MainActivity extends AppCompatActivity
         boolean dateChanged = noteHomeDate();
         if (pendingBoxTaken && isSignedIn() && isAlive()) {
             onBoxTakenRefresh();
+        }
+        if (pendingPillboxSensor && isSignedIn() && isAlive()) {
+            onPillboxSensorRefresh();
         }
         if (!returnedFromBackground || !isSignedIn() || !isAlive()) {
             if (dateChanged && isAlive()) {
@@ -2726,6 +2757,55 @@ public class MainActivity extends AppCompatActivity
                         showApiFailure(getString(R.string.settings_profile), exception);
                     }
                 });
+            }
+        });
+    }
+
+    /**
+     * The open-pillbox notice has no settings row. Turn the server flag off so
+     * a background FCM notification is not posted after the app hides it.
+     */
+    private void ensureOpenNoticeOff() {
+        if (!isSignedIn() || openNoticeOffRequested) {
+            return;
+        }
+        openNoticeOffRequested = true;
+        ApiClient.execute(() -> {
+            try {
+                java.util.List<NotificationSync.Item> current = UserApi.notificationSettings(
+                        getApplicationContext()
+                );
+                boolean enabled = false;
+                for (NotificationSync.Item item : current) {
+                    if (item != null
+                            && NotificationSync.GUARDIAN_OPEN.equals(item.key)
+                            && item.enabled) {
+                        enabled = true;
+                        break;
+                    }
+                }
+                if (!enabled) {
+                    return;
+                }
+                UserApi.updateNotificationSettings(
+                        getApplicationContext(),
+                        java.util.Collections.singletonList(
+                                new NotificationSync.Item(NotificationSync.GUARDIAN_OPEN, false)
+                        )
+                );
+                runOnUiThread(() -> {
+                    if (!isAlive()) {
+                        return;
+                    }
+                    NotificationPreferences preferences = YakyeonRepositoryProvider.get()
+                            .session()
+                            .notifications();
+                    preferences.setBoxOpened(false);
+                    LocalAppSettings.saveNotifications(this, preferences);
+                });
+            } catch (ApiException exception) {
+                openNoticeOffRequested = false;
+                Log.i("PillboxSensor", "open notice off failed " + exception.code());
             }
         });
     }
@@ -5864,6 +5944,31 @@ public class MainActivity extends AppCompatActivity
         homePollHandler.postDelayed(boxTakenRetry, BOX_TAKEN_RETRY_MS);
     }
 
+    /**
+     * IR sensing does not change a dose. Reload the pillbox that is already open,
+     * and read it again once in case the server write is still finishing.
+     */
+    private void onPillboxSensorRefresh() {
+        if (!isAlive() || !isSignedIn()) {
+            Log.i("PillboxSensor", "refresh skip alive=" + isAlive() + " signedIn=" + isSignedIn());
+            return;
+        }
+        Log.i("PillboxSensor", "refresh");
+        refreshPillboxAfterSensor();
+        homePollHandler.removeCallbacks(pillboxSensorRetry);
+        homePollHandler.postDelayed(pillboxSensorRetry, PILLBOX_SENSOR_RETRY_MS);
+    }
+
+    private void refreshPillboxAfterSensor() {
+        if (!showingPillbox()) {
+            pillboxArmed = false;
+            return;
+        }
+        if (pillboxView == MainScreens.CareView.READY) {
+            requestPillboxRefresh();
+        }
+    }
+
     private void invalidateDoseCaches() {
         doseSurfacesReloadedAt = android.os.SystemClock.elapsedRealtime();
         homeArmed = false;
@@ -5967,6 +6072,7 @@ public class MainActivity extends AppCompatActivity
         }
         pillboxPollScheduled = true;
         Log.i("PillboxPoll", "start");
+        requestPillboxRefresh();
         homePollHandler.removeCallbacks(pillboxPollTick);
         homePollHandler.postDelayed(pillboxPollTick, PILLBOX_POLL_INTERVAL_MS);
     }
@@ -6732,6 +6838,11 @@ public class MainActivity extends AppCompatActivity
         if (intent == null) {
             return;
         }
+        if (PushMessages.hidesOpenNotice(stringExtras(intent))) {
+            intent.removeExtra(YakyeonNotifications.EXTRA_NOTIFICATION_ID);
+            YakyeonNotifications.dismissOpenNotices(this);
+            return;
+        }
         String id = intent.getStringExtra(YakyeonNotifications.EXTRA_NOTIFICATION_ID);
         if (id == null || id.trim().isEmpty()) {
             return;
@@ -6748,10 +6859,33 @@ public class MainActivity extends AppCompatActivity
         loadPushDetail(id.trim());
     }
 
+    private static java.util.Map<String, String> stringExtras(Intent intent) {
+        java.util.Map<String, String> data = new java.util.HashMap<>();
+        Bundle extras = intent.getExtras();
+        if (extras == null) {
+            return data;
+        }
+        for (String key : extras.keySet()) {
+            Object value = extras.get(key);
+            if (value instanceof String) {
+                data.put(key, (String) value);
+            }
+        }
+        return data;
+    }
+
     private void loadPushDetail(String notificationId) {
         ApiClient.execute(() -> {
             try {
                 NotificationInbox.Item item = NotificationInbox.find(getApplicationContext(), notificationId);
+                if (item != null && PushMessages.hidesOpenNotice(null, item.title, item.body)) {
+                    runOnUiThread(() -> {
+                        if (isAlive()) {
+                            YakyeonNotifications.dismissOpenNotices(this);
+                        }
+                    });
+                    return;
+                }
                 if (item != null) {
                     try {
                         NotificationInbox.markRead(getApplicationContext(), item.id);
@@ -6774,7 +6908,12 @@ public class MainActivity extends AppCompatActivity
                     showNotice(title, body, null);
                 });
             } catch (ApiException exception) {
-                runOnUiThread(() -> showApiFailure(getString(R.string.app_name), exception));
+                Log.d(FcmRegistrar.TAG, "알림 내용을 불러오지 못함");
+                runOnUiThread(() -> {
+                    if (isAlive()) {
+                        YakyeonNotifications.dismissOpenNotices(this);
+                    }
+                });
             }
         });
     }

@@ -1,10 +1,13 @@
 package com.example.yakyeon2.fcm;
 
+import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
+import android.os.Bundle;
+import android.service.notification.StatusBarNotification;
 import android.util.Log;
 
 import androidx.core.app.NotificationCompat;
@@ -33,6 +36,36 @@ public final class YakyeonNotifications {
         );
         channel.setDescription(context.getString(R.string.fcm_channel_description));
         manager.createNotificationChannel(channel);
+    }
+
+    /**
+     * Removes lid-open notices already sitting in the shade, including ones the
+     * system posted from an FCM notification payload before this process ran.
+     */
+    public static void dismissOpenNotices(Context context) {
+        NotificationManager manager = context.getSystemService(NotificationManager.class);
+        if (manager == null) {
+            return;
+        }
+        StatusBarNotification[] active;
+        try {
+            active = manager.getActiveNotifications();
+        } catch (RuntimeException exception) {
+            Log.e(FcmRegistrar.TAG, "열린 알림을 확인하지 못함", exception);
+            return;
+        }
+        if (active == null) {
+            return;
+        }
+        for (StatusBarNotification posted : active) {
+            if (posted == null || posted.getNotification() == null) {
+                continue;
+            }
+            if (!isOpenNotice(posted.getNotification())) {
+                continue;
+            }
+            manager.cancel(posted.getTag(), posted.getId());
+        }
     }
 
     public static void show(Context context, String title, String body, String notificationId) {
@@ -77,6 +110,37 @@ public final class YakyeonNotifications {
         } catch (SecurityException exception) {
             Log.e(FcmRegistrar.TAG, "알림 표시 실패", exception);
         }
+    }
+
+    private static boolean isOpenNotice(Notification notification) {
+        Bundle extras = notification.extras;
+        if (extras == null) {
+            return false;
+        }
+        String title = text(extras, Notification.EXTRA_TITLE);
+        String body = text(extras, Notification.EXTRA_TEXT);
+        String big = text(extras, Notification.EXTRA_BIG_TEXT);
+        if (PushMessages.confirmsIntake(title, body, big) && !PushMessages.mentionsOpen(title, body, big)) {
+            return false;
+        }
+        CharSequence[] lines = extras.getCharSequenceArray(Notification.EXTRA_TEXT_LINES);
+        String[] lineText = new String[lines == null ? 0 : lines.length];
+        if (lines != null) {
+            for (int index = 0; index < lines.length; index++) {
+                lineText[index] = lines[index] == null ? null : lines[index].toString();
+            }
+        }
+        return PushMessages.mentionsOpen(
+                title,
+                body,
+                big,
+                text(extras, Notification.EXTRA_SUMMARY_TEXT)
+        ) || PushMessages.mentionsOpen(lineText);
+    }
+
+    private static String text(Bundle extras, String key) {
+        CharSequence value = extras.getCharSequence(key);
+        return value == null ? null : value.toString();
     }
 
     private static int notificationId(String raw) {
