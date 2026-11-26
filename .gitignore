@@ -18,3 +18,5 @@ local.properties
 app/google-services.json
 # Local test evidence. Screenshots, logcat, and result notes stay on this machine.
 /test-results/
+# Local documentation. Docs stay on this machine.
+/docs/
